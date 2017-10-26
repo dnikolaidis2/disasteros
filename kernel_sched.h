@@ -44,7 +44,7 @@ typedef enum {
     RUNNING,    /**< A thread running on some core   */
     STOPPED,    /**< A blocked thread   */
     EXITED      /**< A terminated thread   */
-  } Thread_state;
+} Thread_state;
 
 /** @brief Thread phase. 
 
@@ -53,7 +53,7 @@ typedef enum {
 typedef enum { 
     CTX_CLEAN,   /**< Means that, the context stored in the TCB is up-to-date. */
     CTX_DIRTY    /**< Means that, the context stored in the TCN is garbage. */
-  } Thread_phase;
+} Thread_phase;
 
 /** @brief Thread type. */
 typedef enum { 
@@ -101,6 +101,8 @@ typedef struct thread_control_block
 
   void (*thread_func)();   /**< The function executed by this thread */
 
+  uint32_t priority; /**< The threads priority on the MFQ*/
+
   TimerDuration wakeup_time; /**< The time this thread will be woken up by the scheduler */
   rlnode sched_node;      /**< node to use when queueing in the scheduler lists */
 
@@ -134,7 +136,7 @@ typedef struct core_control_block {
   sig_atomic_t preemption;    /**< Marks preemption, used by the locking code */
 
 } CCB;
- 
+
 
 /** @brief the array of Core Control Blocks (CCB) for the kernel */
 extern CCB cctx[MAX_CORES];
@@ -168,8 +170,8 @@ extern CCB cctx[MAX_CORES];
 /**
   @brief Create a new thread.
 
-	This call creates a new thread, initializing and returning its TCB.
-	The thread will belong to process @c pcb and execute @c func.
+  This call creates a new thread, initializing and returning its TCB.
+  The thread will belong to process @c pcb and execute @c func.
   Note that, the new thread is returned in the @c INIT state.
   The caller must use @c wakeup() to start it.
 */
