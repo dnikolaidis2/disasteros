@@ -17,3 +17,5 @@ cmake-build-debug/
 *.sublime-workspace
 
 CMakeLists.txt
+
+test
