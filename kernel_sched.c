@@ -326,7 +326,6 @@ static TCB* sched_queue_select()
 			break;
 		}
 	}
-	// rlnode * sel = rlist_pop_front(& SCHED[0]);
 
 	return sel->tcb;  /* When the list is empty, this is NULL */
 } 
@@ -334,16 +333,17 @@ static TCB* sched_queue_select()
 static void sched_boost()
 {
 	/* Should we do this?*/
-	// rlnode * timedout = rlist_pop_front(& TIMEOUT_LIST);
-	// while( timedout->tcb != NULL) 
-	// {
-		// wakeup(timedout->tcb);
-		// if(!wakeup(timedout->tcb))
-		// {
-		// 	break;
-		// }
-	// 	timedout = rlist_pop_front(& TIMEOUT_LIST);
-	// }
+	for (int i = 0; i < rlist_len(& TIMEOUT_LIST); ++i)
+	{
+		rlnode* timedout = rlist_pop_front(& TIMEOUT_LIST);
+		if(timedout->tcb->state==STOPPED || timedout->tcb->state==INIT) {
+			sched_make_ready(timedout->tcb);
+		}
+		else
+		{
+			rlist_push_back(& TIMEOUT_LIST, timedout);
+		}
+	}
 
 	for (int i = 1; i < MFQ_QUEUES; ++i)
 	{
