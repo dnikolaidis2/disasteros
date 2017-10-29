@@ -160,8 +160,8 @@ TCB* spawn_thread(PCB* pcb, void (*func)())
 	tcb->valgrind_stack_id = 
 		VALGRIND_STACK_REGISTER(sp, sp+THREAD_STACK_SIZE);
 #endif
-
-	/* increase the count of active threads */
+/* increase the count of active threads */
+	
 	Mutex_Lock(&active_threads_spinlock);
 	active_threads++;
 	Mutex_Unlock(&active_threads_spinlock);
@@ -214,8 +214,8 @@ CCB cctx[MAX_CORES];
 */
 
 
-rlnode SCHED [MFQ_QUEUES];                         /* The scheduler queue */
-rlnode TIMEOUT_LIST;				  /* The list of threads with a timeout */
+rlnode SCHED [MFQ_QUEUES];		/* The scheduler queue */
+rlnode TIMEOUT_LIST;          /* The list of threads with a timeout */
 Mutex sched_spinlock = MUTEX_INIT;    /* spinlock for scheduler queue */
 
 
@@ -252,7 +252,7 @@ static void sched_register_timeout(TCB* tcb, TimerDuration timeout)
 			/* skip earlier entries */
 			if(tcb->wakeup_time < n->tcb->wakeup_time) break;
 		/* insert before n */
-	rl_splice(n->prev, & tcb->sched_node);
+		rl_splice(n->prev, & tcb->sched_node);
 	}
 }
 
@@ -275,7 +275,7 @@ static void sched_queue_add(TCB* tcb)
 /*
 	Adjust the state of a thread to make it READY.
 
-		*** MUST BE CALLED WITH sched_spinlock HELD ***	
+		*** MUST BE CALLED WITH sched_spinlock HELD *** 
  */
 static void sched_make_ready(TCB* tcb)
 {
@@ -323,7 +323,7 @@ static TCB* sched_queue_select()
 		sel = rlist_pop_front(& SCHED[i]);
 		if (sel->tcb != NULL)
 		{
-			break; 
+			break;
 		}
 	}
 	// rlnode * sel = rlist_pop_front(& SCHED[0]);
@@ -333,6 +333,18 @@ static TCB* sched_queue_select()
 
 static void sched_boost()
 {
+	/* Should we do this?*/
+	// rlnode * timedout = rlist_pop_front(& TIMEOUT_LIST);
+	// while( timedout->tcb != NULL) 
+	// {
+		// wakeup(timedout->tcb);
+		// if(!wakeup(timedout->tcb))
+		// {
+		// 	break;
+		// }
+	// 	timedout = rlist_pop_front(& TIMEOUT_LIST);
+	// }
+
 	for (int i = 1; i < MFQ_QUEUES; ++i)
 	{
 		rlist_append(&SCHED[0], &SCHED[i]);
@@ -340,23 +352,11 @@ static void sched_boost()
 
 	rlnode* list = &SCHED[0];
 	rlnode* p = list->next;
-	while(p->next!=list) {
+	while(p->next!=list) 
+	{
 		(p->tcb)->priority = 0;
 		p = p->next;
 	}
-
-	/* Should we do this?*/
-	// rlnode * timedout = rlist_pop_front(& TIMEOUT_LIST);
-	// while( timedout->tcb != NULL) {
-	// 		if(timedout->tcb->state == STOPPED || timedout->tcb->state == INIT)
-	// 		{
-	// 		}
-	// 		else
-	// 		{
-	// 			sched_make_ready(timedout->tcb);	
-	// 		}
-	// 		timedout = rlist_pop_front(& TIMEOUT_LIST);
-	// }
 }
 
 /*
@@ -374,7 +374,7 @@ int wakeup(TCB* tcb)
 
 	if(tcb->state==STOPPED || tcb->state==INIT) {
 		sched_make_ready(tcb);
-		ret = 1;		
+		ret = 1;    
 	}
 
 
@@ -451,6 +451,8 @@ void yield(enum SCHED_CAUSE cause)
 			}
 		}break;
 
+		case SCHED_MUTEX:	/**< Mutex_Lock yielded on contention */
+		// case SCHED_USER:	/**< User-space code called yield */
 		case SCHED_IO:       /* The thread is waiting for I/O */
 		case SCHED_PIPE:     /* Sleep at a pipe or socket */
 		{
@@ -462,9 +464,10 @@ void yield(enum SCHED_CAUSE cause)
 
 		/* Not sure what to do with this one */
 		// case SCHED_POLL:     /* The thread is polling a device */
+		// SCHED_IDLE,     /**< The idle thread called yield */
 		default:
 		{
-			// do nothing
+			// do nothing for now
 		}break;
 	}
 
@@ -485,6 +488,12 @@ void yield(enum SCHED_CAUSE cause)
 			assert(0);  /* It should not be READY or EXITED ! */
 	}
 
+	if (timeslices >= TIMESLICE_BOOST)
+	{
+		timeslices = 0;
+		sched_boost();
+	}
+
 	/* Get next */
 	TCB* next = sched_queue_select();
 
@@ -494,12 +503,6 @@ void yield(enum SCHED_CAUSE cause)
 			next = current;
 		else
 			next = & CURCORE.idle_thread;
-	}
-
-	if (timeslices >= TIMESLICE_BOOST)
-	{
-		timeslices = 0;
-		sched_boost();
 	}
 
 	/* ok, link the current and next TCB, for the gain phase */
@@ -519,7 +522,6 @@ void yield(enum SCHED_CAUSE cause)
 	 */
 	gain(preempt);
 }
-
 
 /*
 	This function must be called at the beginning of each new timeslice.
@@ -542,6 +544,8 @@ void gain(int preempt)
 	/* Mark current state */
 	TCB* current = CURTHREAD; 
 	TCB* prev = current->prev;
+
+	uint32_t priority = current->priority;
 
 	current->state = RUNNING;
 	current->phase = CTX_DIRTY;
@@ -570,9 +574,8 @@ void gain(int preempt)
 	if(preempt) preempt_on;
 
 	/* Set a 1-quantum alarm */
-	bios_set_timer(QUANTUM);
+	bios_set_timer(QUANTUM*(priority+1));
 }
-
 
 static void idle_thread()
 {
@@ -601,8 +604,6 @@ void initialize_scheduler()
 	}
 	rlnode_init(&TIMEOUT_LIST, NULL);
 }
-
-
 
 void run_scheduler()
 {
@@ -633,5 +634,3 @@ void run_scheduler()
 	cpu_interrupt_handler(ALARM, NULL);
 	cpu_interrupt_handler(ICI, NULL);
 }
-
-
