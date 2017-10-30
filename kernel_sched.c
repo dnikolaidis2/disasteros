@@ -1,6 +1,7 @@
 
 #include <assert.h>
 #include <sys/mman.h>
+#include <stdlib.h>
 
 #include "tinyos.h"
 #include "kernel_cc.h"
@@ -39,13 +40,15 @@
   we do not support stack growth anyway!
  */
 
-
 /* 
   A counter for active threads. By "active", we mean 'existing', 
   with the exception of idle threads (they don't count).
  */
 volatile unsigned int active_threads = 0;
 Mutex active_threads_spinlock = MUTEX_INIT;
+
+/* Time slice counter*/
+uint32_t timeslices = 0;
 
 /* This is specific to Intel Pentium! */
 #define SYSTEM_PAGE_SIZE  (1<<12)
@@ -76,6 +79,7 @@ void* allocate_thread(size_t size)
       , -1,0);
   
   CHECK((ptr==MAP_FAILED)?-1:0);
+  memset(ptr, 0, size);
 
   return ptr;
 }
@@ -93,6 +97,7 @@ void* allocate_thread(size_t size)
 {
   void* ptr = aligned_alloc(SYSTEM_PAGE_SIZE, size);
   CHECK((ptr==NULL)?-1:0);
+  memset(ptr, 0, size);
   return ptr;
 }
 #endif
@@ -199,8 +204,11 @@ CCB cctx[MAX_CORES];
   Both of these structures are protected by @c sched_spinlock.
 */
 
+#define MFQ_QUEUES 15
 
-rlnode SCHED;                         /* The scheduler queue */
+#define MFQ_TIMESLICES 5
+
+rlnode SCHED[MFQ_QUEUES];                         /* The scheduler queue */
 rlnode TIMEOUT_LIST;				  /* The list of threads with a timeout */
 Mutex sched_spinlock = MUTEX_INIT;    /* spinlock for scheduler queue */
 
@@ -251,7 +259,7 @@ static void sched_register_timeout(TCB* tcb, TimerDuration timeout)
 static void sched_queue_add(TCB* tcb)
 {
   /* Insert at the end of the scheduling list */
-  rlist_push_back(& SCHED, & tcb->sched_node);
+  rlist_push_back(& SCHED[tcb->priority], & tcb->sched_node);
 
   /* Restart possibly halted cores */
   cpu_core_restart_one();
@@ -303,11 +311,30 @@ static TCB* sched_queue_select()
   }
 
   /* Get the head of the SCHED list */
-  rlnode * sel = rlist_pop_front(& SCHED);
+  rlnode * sel = 0;
+  for (int i = 0; i < MFQ_QUEUES; ++i)
+  {
+  	sel = rlist_pop_front(& SCHED[i]);
+  	if (sel != 0)
+  	{
+  		break;
+  	}
+  }
 
   return sel->tcb;  /* When the list is empty, this is NULL */
 } 
 
+static void sched_boost()
+{
+	for (int i = 1; i < MFQ_QUEUES; ++i)
+	{
+		rlnode * sel = rlist_pop_front(&SCHED[i]);
+		if (sel != 0)
+		{
+			rlist_push_back(&SCHED[i - 1], sel);
+		}
+	}
+}
 
 /*
   Make the process ready. 
@@ -390,6 +417,28 @@ void yield(enum SCHED_CAUSE cause)
   int current_ready = 0;
 
   Mutex_Lock(& sched_spinlock);
+
+  switch(cause)
+  {
+  	case SCHED_QUANTUM:  /**< The quantum has expired */
+  	{
+  		current->priority = (current->priority < MFQ_QUEUES) ? current->priority + 1 : current->priority;
+  	}break;
+  	
+  	// case SCHED_USER:     /**< User-space code called yield */
+  	case SCHED_PIPE:     /**< Sleep at a pipe or socket */
+  	case SCHED_MUTEX:    /**< Mutex_Lock yielded on contention */
+  	case SCHED_IO:       /**< The thread is waiting for I/O */
+  	{
+  		current->priority = (current->priority > 0) ? current->priority - 1 : current->priority;
+  	}break;
+  	
+  	default:
+  	{
+  		// Do nothing here
+  	}break;
+  }
+
   switch(current->state)
   {
     case RUNNING:
@@ -405,6 +454,12 @@ void yield(enum SCHED_CAUSE cause)
     default:
       fprintf(stderr, "BAD STATE for current thread %p in yield: %d\n", current, current->state);
       assert(0);  /* It should not be READY or EXITED ! */
+  }
+
+  if (timeslices >= MFQ_TIMESLICES)
+  {
+  	timeslices = 0;
+  	sched_boost();
   }
 
   /* Get next */
@@ -453,12 +508,17 @@ void gain(int preempt)
 {
   Mutex_Lock(& sched_spinlock);
 
+  // Next timeslice
+  timeslices++;
+
   /* Mark current state */
   TCB* current = CURTHREAD; 
   TCB* prev = current->prev;
 
   current->state = RUNNING;
   current->phase = CTX_DIRTY;
+
+  uint32_t priority = current->priority;
 
   if(current != prev) {
   	/* Take care of the previous thread */
@@ -484,7 +544,7 @@ void gain(int preempt)
   if(preempt) preempt_on;
 
   /* Set a 1-quantum alarm */
-  bios_set_timer(QUANTUM);
+  bios_set_timer(QUANTUM + (priority*QUANTUM)/2);
 }
 
 
@@ -510,7 +570,10 @@ static void idle_thread()
  */
 void initialize_scheduler()
 {
-  rlnode_init(&SCHED, NULL);
+	for (int i = 0; i < MFQ_QUEUES; ++i)
+	{
+		rlnode_init(&SCHED[i], NULL);
+	}
   rlnode_init(&TIMEOUT_LIST, NULL);
 }
 

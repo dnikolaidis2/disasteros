@@ -9,3 +9,9 @@ tinyos_shell
 validate_api
 test_example
 doc/
+.idea/
+cmake-build-debug/
+CMakeLists.txt
+test
+*.sublime-project
+*.sublime-workspace

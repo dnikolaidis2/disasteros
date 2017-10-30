@@ -99,6 +99,8 @@ typedef struct thread_control_block
   Thread_state state;    /**< The state of the thread */
   Thread_phase phase;    /**< The phase of the thread */
 
+  uint32_t priority;
+
   void (*thread_func)();   /**< The function executed by this thread */
 
   TimerDuration wakeup_time; /**< The time this thread will be woken up by the scheduler */
