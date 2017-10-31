@@ -10,7 +10,12 @@ validate_api
 test_example
 doc/
 .idea/
-CMakeLists.txt
 cmake-build-debug/
+
 *.sublime-project
+
 *.sublime-workspace
+
+CMakeLists.txt
+
+test
