@@ -58,7 +58,7 @@ FIFOS= con0 con1 con2 con3 kbd0 kbd1 kbd2 kbd3
 
 .PHONY: all tests release clean distclean doc
 
-all: mtask tinyos_shell terminal tests fifos examples test
+all: mtask tinyos_shell terminal tests fifos examples
 
 tests: test_util validate_api test_example 
 
@@ -76,9 +76,6 @@ tinyos_shell: tinyos_shell.o $(C_OBJ)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 terminal: terminal.o 
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
-
-test: test.o 
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 
