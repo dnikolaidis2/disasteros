@@ -100,6 +100,8 @@ typedef struct thread_control_block
   Thread_phase phase;    /**< The phase of the thread */
 
   uint32_t priority;
+  uint8_t mutex_contention;
+  uint32_t prev_priority;
 
   void (*thread_func)();   /**< The function executed by this thread */
 

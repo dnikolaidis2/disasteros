@@ -326,14 +326,15 @@ static TCB* sched_queue_select()
 
 static void sched_boost()
 {
-	for (int i = 1; i < MFQ_QUEUES; ++i)
-	{
-		rlnode * sel = rlist_pop_front(&SCHED[i]);
-		if (sel != 0)
-		{
-			rlist_push_back(&SCHED[i - 1], sel);
-		}
-	}
+	for (int i = 0; i < MFQ_QUEUES - 1; ++i)
+  {
+    if (!is_rlist_empty(&SCHED[i+1]))
+    {
+      rlnode* sel = rlist_pop_front(&SCHED[i+1]);
+      sel->tcb->priority--;
+      rlist_push_back(&SCHED[i], sel);
+    }
+  }
 }
 
 /*
@@ -418,24 +419,47 @@ void yield(enum SCHED_CAUSE cause)
 
   Mutex_Lock(& sched_spinlock);
 
+  /* Restore fairness*/
+  if (!current->mutex_contention && cause != SCHED_MUTEX)
+  {
+    current->priority = current->prev_priority;
+    current->prev_priority = 0;
+    current->mutex_contention = 0;
+  }
+
   switch(cause)
   {
+  	// fix priority after contention ends
+  	case SCHED_MUTEX:    /**< Mutex_Lock yielded on contention */
+    {
+      if (current->mutex_contention)
+      {
+        current->prev_priority = current->priority;
+        current->mutex_contention = 1;
+        current->priority = MFQ_QUEUES-1;
+      }
+    }
   	case SCHED_QUANTUM:  /**< The quantum has expired */
   	{
-  		current->priority = (current->priority < MFQ_QUEUES) ? current->priority + 1 : current->priority;
+  		if (current->priority < MFQ_QUEUES - 1)
+      {
+        current->priority++;
+      }
   	}break;
   	
   	// case SCHED_USER:     /**< User-space code called yield */
   	case SCHED_PIPE:     /**< Sleep at a pipe or socket */
-  	case SCHED_MUTEX:    /**< Mutex_Lock yielded on contention */
   	case SCHED_IO:       /**< The thread is waiting for I/O */
   	{
-  		current->priority = (current->priority > 0) ? current->priority - 1 : current->priority;
+      if (current->priority > 0)
+      {
+        current->priority--;
+      }
   	}break;
   	
   	default:
   	{
-  		// Do nothing here
+      // do nothing
   	}break;
   }
 
