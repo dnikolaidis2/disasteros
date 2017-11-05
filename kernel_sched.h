@@ -88,6 +88,7 @@ enum SCHED_CAUSE {
 typedef struct thread_control_block
 {
   PCB* owner_pcb;       /**< This is null for a free TCB */
+  PTCB* owner_ptcb;     /**< node to thread's ptcb */
 
   cpu_context_t context;     /**< The thread context */
 

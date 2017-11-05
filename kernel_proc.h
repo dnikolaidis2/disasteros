@@ -79,9 +79,11 @@ typedef struct  p_thread_control_block
   int waiting_threads;  /**< Number of threads waiting on this thread*/
   int detached;         /**< If = 0 then thread is joinable */
 
+  Task main_task;         /**< The thread's function */
+  int argl;               /**< The thread's argument length */
+  void* args;             /**< The thread's argument string */
 
 }PTCB;
-
 
 
 /**
