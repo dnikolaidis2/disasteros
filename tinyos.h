@@ -297,6 +297,7 @@ Pid_t GetPPid(void);
  *
  *******************************************/
 
+void start_thread_func();
 
 /** 
   @brief Create a new thread in the current process.
