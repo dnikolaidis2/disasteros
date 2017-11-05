@@ -39,12 +39,16 @@ typedef struct process_control_block {
   pid_state  pstate;      /**< The pid state for this PCB */
 
   PCB* parent;            /**< Parent's pcb. */
+  
+  //@TODO possibly remove
   int exitval;            /**< The exit value */
 
+  //{@TODO possibly remove
   TCB* main_thread;       /**< The main thread */
   Task main_task;         /**< The main thread's function */
   int argl;               /**< The main thread's argument length */
   void* args;             /**< The main thread's argument string */
+  //}
 
   rlnode children_list;   /**< List of children */
   rlnode exited_list;     /**< List of exited children */
@@ -55,7 +59,29 @@ typedef struct process_control_block {
 
   FCB* FIDT[MAX_FILEID];  /**< The fileid table of the process */
 
+  rlnode ptcb_list;       /**< List of PTCBs */
+
+
 } PCB;
+
+/**
+  @brief Process Thread Control Block.
+ */
+typedef struct  p_thread_control_block
+{
+  
+  rlnode pthread;
+  
+  TCB* thread;
+  int exitval;
+
+  CondVar thread_join;  /**< Condition variable for @c ThreadJoin */
+  int waiting_threads;  /**< Number of threads waiting on this thread*/
+  int detached;         /**< If = 0 then thread is joinable */
+
+
+}PTCB;
+
 
 
 /**
