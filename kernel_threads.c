@@ -3,6 +3,8 @@
 #include "kernel_sched.h"
 #include "kernel_proc.h"
 
+void start_thread_func();
+
 // @TODO do we need this? probably not
 #ifdef MMAPPED_THREAD_MEM 
 
@@ -53,13 +55,13 @@ void* allocate_p_thread(size_t size)
   */
 Tid_t sys_CreateThread(Task task, int argl, void* args)
 {
-
   PTCB* ptcb = allocate_p_thread(sizeof(PTCB));         // Allocate memory
-             
+
+  ptcb->pthread_mx = MUTEX_INIT;             
   ptcb->thread_join = COND_INIT;                          // Init CondVar
-  CURTHREAD->owner_ptcb->main_task = task;
-  CURTHREAD->owner_ptcb->argl = argl;
-  CURTHREAD->owner_ptcb->args = args;
+  ptcb->main_task = task;
+  ptcb->argl = argl;
+  ptcb->args = args;
 
   rlnode_init(& ptcb->pthread, ptcb);                     // Init rlNode
   rlist_push_back(& CURPROC->ptcb_list, & ptcb->pthread); // Add PThread to parent PCB's list
@@ -88,7 +90,33 @@ Tid_t sys_ThreadSelf()
   */
 int sys_ThreadJoin(Tid_t tid, int* exitval)
 {
-	return -1;
+  // local copy for speed reasons
+  PCB* process = CURPROC;
+  PTCB* ptcb = ((TCB*)tid)->owner_ptcb;
+
+  // thread not belonging to proccess
+	if (rlist_find(& process->ptcb_list, (void*)tid, (rlnode*)0))
+    return -1;
+  
+  // can't join current thread
+  if ((TCB*)tid == CURTHREAD)
+    return -1;
+
+  // can't join detached
+  if (ptcb->detached)
+    return -1;
+
+  Mutex_Lock(&ptcb->pthread_mx);
+  ptcb->waiting_threads++;
+
+  Cond_Wait(&ptcb->pthread_mx, &ptcb->thread_join);
+
+  ptcb->waiting_threads--;
+  Mutex_Unlock(&ptcb->pthread_mx);
+
+  *exitval = ptcb->exitval;
+
+  return 0;
 }
 
 /**
@@ -96,7 +124,7 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
   */
 int sys_ThreadDetach(Tid_t tid)
 {
-	return -1;
+	return 0;
 }
 
 /**
@@ -104,7 +132,33 @@ int sys_ThreadDetach(Tid_t tid)
   */
 void sys_ThreadExit(int exitval)
 {
+  // local copy for speed reasons
+  PTCB* ptcb = CURTHREAD->owner_ptcb;
+  ptcb->exitval = exitval;
 
+
+  if (!ptcb->detached)
+  {
+    // don't let anyone join after this
+    ptcb->detached = 1;
+
+    // wake everyone so that they can get the retval
+    Cond_Broadcast(&ptcb->thread_join);
+
+    // wait for everone to finish joining
+    while(ptcb->waiting_threads)
+    {
+      // hand off to scheduller so that everone can be woken up
+      yield(SCHED_USER);
+    }
+  }
+
+  // do all the deallocation before the thread dies
+  free_p_thread(ptcb, sizeof(PTCB));
+
+  // pass to scheduller so that he can kill us
+  CURTHREAD->state = EXITED;
+  yield(SCHED_USER);
 }
 
 /**
@@ -120,7 +174,5 @@ void start_thread_func()
 
   //@TODO need to save exitval in PTCB, probably inside ThreadExit()
   int exitval = call(argl,args);
-  CURTHREAD->owner_ptcb->exitval = exitval;
-  //@TODO do we do this
   sys_ThreadExit(exitval);
 }

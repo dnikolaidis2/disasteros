@@ -61,7 +61,6 @@ typedef struct process_control_block {
 
   rlnode ptcb_list;       /**< List of PTCBs */
 
-
 } PCB;
 
 /**
@@ -69,12 +68,12 @@ typedef struct process_control_block {
  */
 typedef struct  p_thread_control_block
 {
-  
   rlnode pthread;
   
   TCB* thread;
   int exitval;
 
+  Mutex pthread_mx;
   CondVar thread_join;  /**< Condition variable for @c ThreadJoin */
   int waiting_threads;  /**< Number of threads waiting on this thread*/
   int detached;         /**< If = 0 then thread is joinable */
