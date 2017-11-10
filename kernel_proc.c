@@ -160,7 +160,20 @@ Pid_t sys_Exec(Task call, int argl, void* args)
     }
   }
 
+  /* Creates new PTCB for main thread and pushes the ptcb node
+     into the PCB's list internally. 
+  */
+  PTCB* ptcb = Create_PTCB(newproc);
 
+  /* And initializes threads start func data. */
+  ptcb->main_task = call;
+  ptcb->argl = argl;
+  ptcb->args = args;
+
+  /* Make detachable. */
+  ptcb->detached = 1;
+
+  //@TODO probably remove
   /* Set the main thread's function */
   newproc->main_task = call;
 
@@ -179,7 +192,18 @@ Pid_t sys_Exec(Task call, int argl, void* args)
     the initialization of the PCB.
    */
   if(call != NULL) {
+    /*
+      > Spawn and initialize thread
+      > Increment total thread counter. 
+    */
     newproc->main_thread = spawn_thread(newproc, start_main_thread);
+    newproc->thread_count++;
+
+    /* Link PTCB and its Thread with each other. */
+    newproc->main_thread->owner_ptcb = ptcb;
+    ptcb->thread = newproc->main_thread; 
+
+    /* Thread should be ready now. */
     wakeup(newproc->main_thread);
   }
 

@@ -60,6 +60,7 @@ typedef struct process_control_block {
   FCB* FIDT[MAX_FILEID];  /**< The fileid table of the process */
 
   rlnode ptcb_list;       /**< List of PTCBs */
+  int thread_count;       /**< Total number of threads. */
 
 } PCB;
 
@@ -83,6 +84,15 @@ typedef struct  p_thread_control_block
   void* args;             /**< The thread's argument string */
 
 }PTCB;
+
+
+/**
+  @brief Acquire PTCB.
+
+  This function returns a PTCB struct with its members initialized and 
+  pushes its rlnode in PCB's ptcb_list 
+*/
+PTCB* Create_PTCB(PCB* pcb);
 
 
 /**
