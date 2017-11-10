@@ -79,7 +79,6 @@ void* allocate_thread(size_t size)
       , -1,0);
   
   CHECK((ptr==MAP_FAILED)?-1:0);
-  memset(ptr, 0, size);
 
   return ptr;
 }
@@ -97,7 +96,8 @@ void* allocate_thread(size_t size)
 {
   void* ptr = aligned_alloc(SYSTEM_PAGE_SIZE, size);
   CHECK((ptr==NULL)?-1:0);
-  memset(ptr, 0, size);
+  // rip! it was not ment to be (ಥ⌣ಥ)
+  // memset(ptr, 0, size);
   return ptr;
 }
 #endif
@@ -138,6 +138,8 @@ TCB* spawn_thread(PCB* pcb, void (*func)())
   tcb->phase = CTX_CLEAN;
   tcb->thread_func = func;
   tcb->wakeup_time = NO_TIMEOUT;
+  tcb->priority = 0;
+  tcb->mutex_contention = 0;
   rlnode_init(& tcb->sched_node, tcb);  /* Intrusive list node */
 
 
@@ -311,17 +313,15 @@ static TCB* sched_queue_select()
   }
 
   /* Get the head of the SCHED list */
-  rlnode * sel = 0;
   for (int i = 0; i < MFQ_QUEUES; ++i)
   {
-  	sel = rlist_pop_front(& SCHED[i]);
-  	if (sel != 0)
-  	{
-  		break;
-  	}
+    if (!is_rlist_empty(& SCHED[i]))
+    {
+      return rlist_pop_front(&SCHED[i])->tcb;
+    }
   }
 
-  return sel->tcb;  /* When the list is empty, this is NULL */
+  return NULL;  /* When the list is empty, this is NULL */
 } 
 
 static void sched_boost()
@@ -420,7 +420,7 @@ void yield(enum SCHED_CAUSE cause)
   Mutex_Lock(& sched_spinlock);
 
   /* Restore fairness*/
-  if (!current->mutex_contention && cause != SCHED_MUTEX)
+  if (current->mutex_contention && cause != SCHED_MUTEX)
   {
     current->priority = current->prev_priority;
     current->prev_priority = 0;
@@ -429,38 +429,34 @@ void yield(enum SCHED_CAUSE cause)
 
   switch(cause)
   {
-  	// fix priority after contention ends
   	case SCHED_MUTEX:    /**< Mutex_Lock yielded on contention */
-    {
-      if (current->mutex_contention)
+      // fprintf(stderr, "MUTEX\n");
+      if (!current->mutex_contention)
       {
         current->prev_priority = current->priority;
         current->mutex_contention = 1;
-        current->priority = MFQ_QUEUES-1;
+        // current->priority = MFQ_QUEUES-1;
       }
-    }
+    // break;
   	case SCHED_QUANTUM:  /**< The quantum has expired */
-  	{
   		if (current->priority < MFQ_QUEUES - 1)
       {
         current->priority++;
       }
-  	}break;
+  	break;
   	
-  	// case SCHED_USER:     /**< User-space code called yield */
+  	case SCHED_USER:     /**< User-space code called yield */
   	case SCHED_PIPE:     /**< Sleep at a pipe or socket */
   	case SCHED_IO:       /**< The thread is waiting for I/O */
-  	{
       if (current->priority > 0)
       {
         current->priority--;
       }
-  	}break;
+  	break;
   	
   	default:
-  	{
       // do nothing
-  	}break;
+  	break;
   }
 
   switch(current->state)
@@ -542,8 +538,6 @@ void gain(int preempt)
   current->state = RUNNING;
   current->phase = CTX_DIRTY;
 
-  uint32_t priority = current->priority;
-
   if(current != prev) {
   	/* Take care of the previous thread */
     prev->phase = CTX_CLEAN;
@@ -568,7 +562,7 @@ void gain(int preempt)
   if(preempt) preempt_on;
 
   /* Set a 1-quantum alarm */
-  bios_set_timer(QUANTUM + (priority*QUANTUM)/2);
+  bios_set_timer(QUANTUM*(current->priority+1));
 }
 
 
