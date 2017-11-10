@@ -31,6 +31,7 @@ int Symposium_thr(size_t,const char**);
 int RemoteServer(size_t,const char**);
 int RemoteClient(size_t,const char**);
 int Echo(size_t,const char**);
+int Time(size_t,const char**);
 
 
 struct { const char * cmdname; Program prog; uint nargs; const char* help; } 
@@ -54,6 +55,7 @@ COMMANDS[]  =
 	{"rserver", RemoteServer, 0, "A server for remote execution."},
 	{"rcli", RemoteClient, 1, "Remote client: rcli <cmd> [<args...>]."},
 	{"echo", Echo, 0, "echo [<args...>], send the <args...> to stdout"},
+	{"time", Time, 0, "time <cmd...>, time the <cmd...>"},
 
 	{NULL, NULL, 0, NULL}
 };
@@ -880,6 +882,18 @@ int process_line(int argc, const char** argv)
 	return 1;
 }
 
+
+int Time(size_t argc, const char** argv)
+{
+	TimerDuration start = bios_clock(), diff;
+	process_line(argc-1, argv+1);
+	diff = bios_clock() - start;
+
+	float sec = (float)(diff)/1000000;
+	int min = (int)(sec/60);
+	printf("Time elapsed %dm%.3f\n", min, (float)(sec - min*60));
+	return 0;
+}
 
 
 int Shell(size_t argc, const char** argv)
