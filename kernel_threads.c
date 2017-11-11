@@ -23,8 +23,10 @@ Tid_t sys_CreateThread(Task task, int argl, void* args)
   {
     ptcb->thread = spawn_thread(CURPROC, start_thread_func);
     ptcb->thread->owner_ptcb = ptcb;     // Link thread to its PTCB
+    
+    ptcb->thread->owner_pcb->thread_count++;
 
-    if(wakeup(ptcb->thread))         // If everything is done, wakeup the thread
+    if(!wakeup(ptcb->thread))         // If everything is done, wakeup the thread
       return NOTHREAD;
   }
   
@@ -43,7 +45,9 @@ Tid_t sys_ThreadSelf()
   @brief Join the given thread.
   */
 int sys_ThreadJoin(Tid_t tid, int* exitval)
-{
+{ 
+  int detached_flag;
+
   // local copy for speed reasons
   PCB* process = CURPROC;
   PTCB* ptcb = ((TCB*)tid)->owner_ptcb;
@@ -57,7 +61,7 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
     return -1;
 
   // can't join detached 
-  if (ptcb->detached)
+  if (ptcb->detached == 1)
     return -1;
 
   Mutex_Lock(&ptcb->pthread_mx);
@@ -66,15 +70,21 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
   Cond_Wait(&ptcb->pthread_mx, &ptcb->thread_join);
   
   // Make sure exitval is saved.
-  if(exitval != NULL){
-    *exitval = ptcb->exitval;
-  }  
+  if(exitval != NULL)
+    *exitval = ptcb->exitval; 
+  
+  // Check if woke up because of detach
+  // Need to be checked before "waiting_t--" to prevent race cond.
+  if(ptcb->detached)
+    detached_flag = 1;
+
   // Updated counter.
-  ptcb->waiting_threads--;
+  ptcb->waiting_threads--; 
+  
   Mutex_Unlock(&ptcb->pthread_mx);
 
-  if(ptcb->detached == 1)
-  {
+  
+  if (detached_flag){
     return -1;
   }
   return 0;
