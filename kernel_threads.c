@@ -16,11 +16,8 @@ Tid_t sys_CreateThread(Task task, int argl, void* args)
   /* Set the thread's function */
   ptcb->main_task = task;
 
-  /* Copy the arguments to new storage, owned by the new process */
   ptcb->argl = argl;
   ptcb->args = args;
-
-  rlist_push_back(&CURPROC->ptcb_list, & ptcb->pthread);
 
   // Spawn thread
   if(task != NULL)
@@ -63,7 +60,8 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
   PTCB* ptcb = ((TCB*)tid)->owner_ptcb;
   
   // thread not belonging to proccess
-  if (ptcb->owner_pcb == CURPROC)
+  if (((TCB*)tid)->owner_pcb != process)
+  // if (rlist_find(& process->ptcb_list, (void*)tid, (rlnode*)0))
     return -1;
   
   // can't join current or main threads
@@ -214,7 +212,7 @@ PTCB* Create_PTCB(PCB* pcb)
   ptcb->thread_join = COND_INIT;                          // Init CondVar
 
   rlnode_init(& ptcb->pthread, ptcb);                     // Init rlNode
-  // rlist_push_back(& pcb->ptcb_list, & ptcb->pthread);     // Add PThread to parent PCB's list
+  rlist_push_back(& pcb->ptcb_list, & ptcb->pthread);     // Add PThread to parent PCB's list
 
   return ptcb;
 }
