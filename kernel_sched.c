@@ -113,6 +113,8 @@ void gain(int preempt); /* forward */
 static void thread_start()
 {
   gain(1);
+  //@TODO REMOVE
+  //fprintf(stderr,"Started a thread\n" );
   CURTHREAD->thread_func();
 
   /* We are not supposed to get here! */
@@ -430,7 +432,8 @@ void yield(enum SCHED_CAUSE cause)
   switch(cause)
   {
   	case SCHED_MUTEX:    /**< Mutex_Lock yielded on contention */
-      // fprintf(stderr, "MUTEX\n");
+      //@TODO remove
+      //fprintf(stderr, "MUTEX\n");
       if (!current->mutex_contention)
       {
         current->prev_priority = current->priority;
@@ -528,6 +531,8 @@ void gain(int preempt)
 {
   Mutex_Lock(& sched_spinlock);
 
+  //@TODO REMOVE
+  //fprintf(stderr, "in Gain \n" );
   // Next timeslice
   timeslices++;
 
@@ -547,6 +552,8 @@ void gain(int preempt)
         if(prev->type != IDLE_THREAD) sched_queue_add(prev);
         break;
       case EXITED:
+        //@TODO REMOVE
+        //fprintf(stderr, "Previous thread is EXITED --- \n" );
       	release_TCB(prev);
         break;
       case STOPPED:

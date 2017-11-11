@@ -20,7 +20,11 @@ Tid_t sys_CreateThread(Task task, int argl, void* args)
 
   // Spawn thread
   if(task != NULL)
-  {
+  { 
+
+    //@TODO REMOVE
+    //fprintf(stderr, "I spawned a thread!  --- \n" );
+
     ptcb->thread = spawn_thread(CURPROC, start_thread_func);
     ptcb->thread->owner_ptcb = ptcb;     // Link thread to its PTCB
     
@@ -28,6 +32,9 @@ Tid_t sys_CreateThread(Task task, int argl, void* args)
 
     if(!wakeup(ptcb->thread))         // If everything is done, wakeup the thread
       return NOTHREAD;
+    
+    //@TODO REMOVE
+    //fprintf(stderr, "I woke up a thread! Count: %d\n", ptcb->thread->owner_pcb->thread_count);
   }
   
 	return (Tid_t) ptcb->thread;    // NOT current thread.
@@ -45,15 +52,26 @@ Tid_t sys_ThreadSelf()
   @brief Join the given thread.
   */
 int sys_ThreadJoin(Tid_t tid, int* exitval)
-{ 
+{  
+
+  // If thread doesn't exist.
+  if(tid == NOTHREAD){
+    return -1;
+  }
+  
+  //@TODO REMOVE
+  // fprintf(stderr, "Trying to join a thread!  --- First\n" );
+
   int detached_flag;
 
   // local copy for speed reasons
   PCB* process = CURPROC;
   PTCB* ptcb = ((TCB*)tid)->owner_ptcb;
+  
 
   // thread not belonging to proccess
-	if (rlist_find(& process->ptcb_list, (void*)tid, (rlnode*)0))
+	//@TODO maybe change this to process == ((TCB*)tid)->owner_pcb
+  if (rlist_find(& process->ptcb_list, (void*)tid, (rlnode*)0))
     return -1;
   
   // can't join current or main threads
@@ -64,10 +82,20 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
   if (ptcb->detached == 1)
     return -1;
 
+  //@TODO REMOVE
+  // fprintf(stderr, "before mutex\n" );
   Mutex_Lock(&ptcb->pthread_mx);
   ptcb->waiting_threads++;
 
+  //@TODO REMOVE
+  // fprintf(stderr, "Trying to join a thread!  --- Second Inside Lock\n" );
+  
+  kernel_unlock();
   Cond_Wait(&ptcb->pthread_mx, &ptcb->thread_join);
+  kernel_lock();
+
+  //@TODO REMOVE
+  // fprintf(stderr, "Woke up --- Third Inside Lock\n" );
   
   // Make sure exitval is saved.
   if(exitval != NULL)
@@ -82,8 +110,15 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
   ptcb->waiting_threads--; 
   
   Mutex_Unlock(&ptcb->pthread_mx);
-
   
+  ptcb->thread->state = EXITED;
+  rlist_remove(& ptcb->pthread);
+
+  free(ptcb);
+  process->thread_count--;
+  
+
+
   if (detached_flag){
     return -1;
   }
@@ -110,10 +145,14 @@ int sys_ThreadDetach(Tid_t tid)
     return -1;
   }
 
+  //@TODO REMOVE
+  // fprintf(stderr, "Trying to broadcast\n" );
   // Check for joined threads and wake them up
   if (ptcb->waiting_threads > 0)
   { 
     //@TODO maybe we need a lock?
+    //@TODO REMOVE
+    //fprintf(stderr, "Trying to wake up a thread  --- \n" );
     Cond_Broadcast(& ptcb->thread_join);    // Wake up threads.
     
     // hand off to scheduller so that everone can be woken up
@@ -121,7 +160,7 @@ int sys_ThreadDetach(Tid_t tid)
     {      
       yield(SCHED_USER);
     }
-  }
+  }  
 
   ptcb->detached = 1;
 
@@ -177,15 +216,26 @@ void sys_ThreadExit(int exitval)
   { 
     /* Save exitval in PTCB. */
     ptcb->exitval = exitval;
+    //@TODO remove
+    // fprintf(stderr, "before detach\n" );
 
     /* sets thread as detached while also waking up any joined threads.*/
+    kernel_unlock();
     sys_ThreadDetach((Tid_t) CURTHREAD);
+    kernel_lock();
+
+
+    //@TODO REMOVE
+    // fprintf(stderr, "Trying to free\n" );
+
+    // Removes ptcb from PTB's list
+    //rlist_remove(CURTHREAD->owner_ptcb->pthread);
 
     /* We no longer need the PTCB */
-    free(ptcb);
+    //free(ptcb);
 
-    pcb->thread_count--;
-    kernel_sleep(EXITED, SCHED_USER);
+    //pcb->thread_count--;
+    kernel_sleep(STOPPED, SCHED_USER);
   }
 
 }

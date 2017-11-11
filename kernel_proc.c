@@ -4,7 +4,6 @@
 #include "kernel_proc.h"
 #include "kernel_streams.h"
 
-
 /* 
  The process table and related system calls:
  - Exec
@@ -197,7 +196,10 @@ Pid_t sys_Exec(Task call, int argl, void* args)
       > Increment total thread counter. 
     */
     newproc->main_thread = spawn_thread(newproc, start_main_thread);
-    newproc->thread_count++;
+    newproc->thread_count = 1;
+
+    //@TODO REMOVE
+    //fprintf(stderr,"I spawned main thread thread!\n" );
 
     /* Link PTCB and its Thread with each other. */
     newproc->main_thread->owner_ptcb = ptcb;
