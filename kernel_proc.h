@@ -69,6 +69,7 @@ typedef struct process_control_block {
  */
 typedef struct  p_thread_control_block
 {
+  PCB* owner_pcb;
   rlnode pthread;
   
   TCB* thread;

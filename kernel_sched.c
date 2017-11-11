@@ -432,8 +432,6 @@ void yield(enum SCHED_CAUSE cause)
   switch(cause)
   {
   	case SCHED_MUTEX:    /**< Mutex_Lock yielded on contention */
-      //@TODO remove
-      //fprintf(stderr, "MUTEX\n");
       if (!current->mutex_contention)
       {
         current->prev_priority = current->priority;

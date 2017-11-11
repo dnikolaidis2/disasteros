@@ -154,6 +154,7 @@ extern CCB cctx[MAX_CORES];
   This is a pointer to the TCB of the thread currently executing on this core.
 */
 #define CURTHREAD  (CURCORE.current_thread)
+#define CURPTHREAD (CURTHREAD->owner_ptcb)
 
 /** 
   @brief The current thread.
