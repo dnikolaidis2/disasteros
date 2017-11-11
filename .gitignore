@@ -15,3 +15,4 @@ CMakeLists.txt
 test
 *.sublime-project
 *.sublime-workspace
+\.vscode/

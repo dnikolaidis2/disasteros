@@ -6,51 +6,6 @@
 
 void start_thread_func();
 
-// @TODO do we need this? probably not
-#ifdef MMAPPED_THREAD_MEM 
-
-/*
-  Use mmap to allocate a p_thread. A more detailed implementation can allocate a
-  "sentinel page", and change access to PROT_NONE, so that a stack overflow
-  is detected as seg.fault.
- */
-void free_p_thread(void* ptr, size_t size)
-{
-  CHECK(munmap(ptr, size));
-}
-
-void* allocate_p_thread(size_t size)
-{
-  void* ptr = mmap(NULL, size, 
-      PROT_READ|PROT_WRITE|PROT_EXEC,  
-      MAP_ANONYMOUS  | MAP_PRIVATE 
-      , -1,0);
-  
-  CHECK((ptr==MAP_FAILED)?-1:0);
-  memset(ptr, 0, size);
-
-  return ptr;
-}
-#else
-/*
-  Use malloc to allocate a p_thread. This is probably faster than  mmap, but cannot
-  be made easily to 'detect' stack overflow.
- */
-void free_p_thread(void* ptr, size_t size)
-{
-  free(ptr);
-}
-
-void* allocate_p_thread(size_t size)
-{
-  void* ptr = malloc(size);
-  CHECK((ptr==NULL)?-1:0);
-  memset(ptr, 0, size);
-  return ptr;
-}
-#endif
-
-
   /**
   @brief Create a new thread in the current process.
   */
@@ -69,7 +24,8 @@ Tid_t sys_CreateThread(Task task, int argl, void* args)
     ptcb->thread = spawn_thread(CURPROC, start_thread_func);
     ptcb->thread->owner_ptcb = ptcb;     // Link thread to its PTCB
 
-    wakeup(ptcb->thread);         // If everything is done, wakeup the thread
+    if(wakeup(ptcb->thread))         // If everything is done, wakeup the thread
+      return NOTHREAD;
   }
   
 	return (Tid_t) ptcb->thread;    // NOT current thread.
@@ -96,12 +52,12 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
 	if (rlist_find(& process->ptcb_list, (void*)tid, (rlnode*)0))
     return -1;
   
-  // can't join current thread
-  if ((TCB*)tid == CURTHREAD)
+  // can't join current or main threads
+  if ((TCB*)tid == CURTHREAD || (TCB*)tid == process->main_thread)
     return -1;
 
-  // can't join detached AND NOT main_thread
-  if (ptcb->detached && (TCB*)tid != process->main_thread)
+  // can't join detached 
+  if (ptcb->detached)
     return -1;
 
   Mutex_Lock(&ptcb->pthread_mx);
@@ -109,8 +65,6 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
 
   Cond_Wait(&ptcb->pthread_mx, &ptcb->thread_join);
   
-  //@TODO return -1 if detached?
-
   // Make sure exitval is saved.
   if(exitval != NULL){
     *exitval = ptcb->exitval;
@@ -119,8 +73,6 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
   ptcb->waiting_threads--;
   Mutex_Unlock(&ptcb->pthread_mx);
 
-
-  //@TODO return -1 if detached?
   if(ptcb->detached == 1)
   {
     return -1;
@@ -203,7 +155,7 @@ void sys_ThreadExit(int exitval)
     /* All other threads should be exited by now */
 
     /* We no longer need the PTCB */
-    free_p_thread(ptcb, sizeof(PTCB));
+    free(ptcb);
 
     /* thread_count should now be =0*/
     pcb->thread_count--;
@@ -220,7 +172,7 @@ void sys_ThreadExit(int exitval)
     sys_ThreadDetach((Tid_t) CURTHREAD);
 
     /* We no longer need the PTCB */
-    free_p_thread(ptcb, sizeof(PTCB));
+    free(ptcb);
 
     pcb->thread_count--;
     kernel_sleep(EXITED, SCHED_USER);
@@ -244,15 +196,18 @@ void start_thread_func()
 }
 
 
-PTCB* Create_PTCB(PCB* pcb){
+PTCB* Create_PTCB(PCB* pcb)
+{
 
-  PTCB* ptcb = allocate_p_thread(sizeof(PTCB));         // Allocate memory
+  PTCB* ptcb = (PTCB*)malloc(sizeof(PTCB));               // Allocate memory
+  CHECK((ptcb==NULL)?-1:0);
+  memset(ptcb, 0, sizeof(PTCB));
 
   ptcb->pthread_mx = MUTEX_INIT;             
   ptcb->thread_join = COND_INIT;                          // Init CondVar
 
   rlnode_init(& ptcb->pthread, ptcb);                     // Init rlNode
-  rlist_push_back(& pcb->ptcb_list, & ptcb->pthread); // Add PThread to parent PCB's list
+  rlist_push_back(& pcb->ptcb_list, & ptcb->pthread);     // Add PThread to parent PCB's list
 
   return ptcb;
 }
