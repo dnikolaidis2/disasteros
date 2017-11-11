@@ -39,12 +39,16 @@ typedef struct process_control_block {
   pid_state  pstate;      /**< The pid state for this PCB */
 
   PCB* parent;            /**< Parent's pcb. */
+  
+  //@TODO possibly remove
   int exitval;            /**< The exit value */
 
+  //{@TODO possibly remove
   TCB* main_thread;       /**< The main thread */
   Task main_task;         /**< The main thread's function */
   int argl;               /**< The main thread's argument length */
   void* args;             /**< The main thread's argument string */
+  //}
 
   rlnode children_list;   /**< List of children */
   rlnode exited_list;     /**< List of exited children */
@@ -55,7 +59,40 @@ typedef struct process_control_block {
 
   FCB* FIDT[MAX_FILEID];  /**< The fileid table of the process */
 
+  rlnode ptcb_list;       /**< List of PTCBs */
+  int thread_count;       /**< Total number of threads. */
+
 } PCB;
+
+/**
+  @brief Process Thread Control Block.
+ */
+typedef struct  p_thread_control_block
+{
+  rlnode pthread;
+  
+  TCB* thread;
+  int exitval;
+
+  Mutex pthread_mx;
+  CondVar thread_join;  /**< Condition variable for @c ThreadJoin */
+  int waiting_threads;  /**< Number of threads waiting on this thread*/
+  int detached;         /**< If = 0 then thread is joinable */
+
+  Task main_task;         /**< The thread's function */
+  int argl;               /**< The thread's argument length */
+  void* args;             /**< The thread's argument string */
+
+}PTCB;
+
+
+/**
+  @brief Acquire PTCB.
+
+  This function returns a PTCB struct with its members initialized and 
+  pushes its rlnode in PCB's ptcb_list 
+*/
+PTCB* Create_PTCB(PCB* pcb);
 
 
 /**

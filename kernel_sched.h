@@ -88,6 +88,7 @@ enum SCHED_CAUSE {
 typedef struct thread_control_block
 {
   PCB* owner_pcb;       /**< This is null for a free TCB */
+  PTCB* owner_ptcb;     /**< node to thread's ptcb */
 
   cpu_context_t context;     /**< The thread context */
 
@@ -98,6 +99,10 @@ typedef struct thread_control_block
   Thread_type type;       /**< The type of thread */
   Thread_state state;    /**< The state of the thread */
   Thread_phase phase;    /**< The phase of the thread */
+
+  uint32_t priority;
+  uint8_t mutex_contention;
+  uint32_t prev_priority;
 
   void (*thread_func)();   /**< The function executed by this thread */
 
@@ -168,8 +173,8 @@ extern CCB cctx[MAX_CORES];
 /**
   @brief Create a new thread.
 
-	This call creates a new thread, initializing and returning its TCB.
-	The thread will belong to process @c pcb and execute @c func.
+  This call creates a new thread, initializing and returning its TCB.
+  The thread will belong to process @c pcb and execute @c func.
   Note that, the new thread is returned in the @c INIT state.
   The caller must use @c wakeup() to start it.
 */
