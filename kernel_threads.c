@@ -66,11 +66,11 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
     return -1;
   
   // can't join current or main threads
-  if ((TCB*)tid == CURTHREAD || (TCB*)tid == process->main_thread)
+  if ((TCB*)tid == CURTHREAD || (TCB*)tid == process->main_thread->thread)
     return -1;
 
   // can't join detached thread but the main thread to be able too
-  if (ptcb->detached == 1 && (TCB*)tid != process->main_thread)
+  if (ptcb->detached == 1 && (TCB*)tid != process->main_thread->thread)
     return -1;
   
   ptcb->waiting_threads++;
@@ -140,7 +140,7 @@ void sys_ThreadExit(int exitval)
   PTCB* ptcb = CURPTHREAD;
 
   /* --- If main_thread --- */
-  if(CURTHREAD == pcb->main_thread)
+  if(CURTHREAD == pcb->main_thread->thread)
   { 
     // Wait for all threads to finish their task.
     while(!is_rlist_empty(&pcb->ptcb_list))

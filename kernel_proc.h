@@ -42,14 +42,8 @@ typedef struct process_control_block {
   
   int exitval;            /**< The exit value */
 
-  //{@TODO possibly remove
-  PTCB* main_pthread;
-  TCB* main_thread;       /**< The main thread */
-  Task main_task;         /**< The main thread's function */
-  int argl;               /**< The main thread's argument length */
-  void* args;             /**< The main thread's argument string */
-  //}
-
+  PTCB* main_thread;      /**< main thread*/
+  
   rlnode children_list;   /**< List of children */
   rlnode exited_list;     /**< List of exited children */
 
@@ -69,16 +63,16 @@ typedef struct process_control_block {
  */
 typedef struct  p_thread_control_block
 {
-  PCB* owner_pcb;
-  rlnode pthread;
+  PCB* owner_pcb;         /**< Owner PCB*/
+  rlnode pthread;         /**< Node for intrusive list*/
   
   TCB* thread;
-  int exitval;
+  int exitval;            /**< The exit value */
 
-  CondVar waiting;      /**< Condition variable to wake sleeping threads so that they can be joined*/
-  CondVar thread_join;  /**< Condition variable for @c ThreadJoin */
-  int waiting_threads;  /**< Number of threads waiting on this thread*/
-  int detached;         /**< If = 0 then thread is joinable */
+  CondVar waiting;        /**< Condition variable to wake sleeping threads so that they can be joined*/
+  CondVar thread_join;    /**< Condition variable for @c ThreadJoin */
+  int waiting_threads;    /**< Number of threads waiting on this thread*/
+  int detached;           /**< If = 0 then thread is joinable */
 
   Task main_task;         /**< The thread's function */
   int argl;               /**< The thread's argument length */
