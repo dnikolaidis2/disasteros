@@ -121,6 +121,7 @@ void start_main_thread()
   void* args = CURPROC->args;
 
   exitval = call(argl,args);
+  ThreadExit(exitval);
   Exit(exitval);
 }
 
@@ -203,6 +204,7 @@ Pid_t sys_Exec(Task call, int argl, void* args)
 
     /* Link PTCB and its Thread with each other. */
     newproc->main_thread->owner_ptcb = ptcb;
+    newproc->main_pthread = ptcb;
     ptcb->thread = newproc->main_thread; 
 
     /* Thread should be ready now. */

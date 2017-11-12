@@ -942,12 +942,13 @@ BOOT_TEST(test_create_join_thread,
 
 
 BOOT_TEST(test_exit_many_threads,
-	"Test that a process thread calling Exit will clean up correctly."
+	"Test that a process thread calling Exit will clean up correctly.",
+	.timeout = 60
 	)
 {
 
 	int task(int argl, void* args) {
-		fibo(45);
+		fibo(40);
 		return 2;
 	}
 

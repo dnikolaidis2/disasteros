@@ -40,10 +40,10 @@ typedef struct process_control_block {
 
   PCB* parent;            /**< Parent's pcb. */
   
-  //@TODO possibly remove
   int exitval;            /**< The exit value */
 
   //{@TODO possibly remove
+  PTCB* main_pthread;
   TCB* main_thread;       /**< The main thread */
   Task main_task;         /**< The main thread's function */
   int argl;               /**< The main thread's argument length */
@@ -75,7 +75,7 @@ typedef struct  p_thread_control_block
   TCB* thread;
   int exitval;
 
-  Mutex pthread_mx;
+  CondVar waiting;      /**< Condition variable to wake sleeping threads so that they can be joined*/
   CondVar thread_join;  /**< Condition variable for @c ThreadJoin */
   int waiting_threads;  /**< Number of threads waiting on this thread*/
   int detached;         /**< If = 0 then thread is joinable */
