@@ -32,6 +32,7 @@ Tid_t sys_CreateThread(Task task, int argl, void* args)
   }
   else
   {
+    free(ptcb);
     return NOTHREAD;
   }
 
@@ -68,8 +69,8 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
   if ((TCB*)tid == CURTHREAD || (TCB*)tid == process->main_thread)
     return -1;
 
-  // can't join detached 
-  if (ptcb->detached == 1)
+  // can't join detached thread but the main thread to be able too
+  if (ptcb->detached == 1 && (TCB*)tid != process->main_thread)
     return -1;
   
   ptcb->waiting_threads++;
@@ -111,13 +112,10 @@ int sys_ThreadDetach(Tid_t tid)
   // thread is EXITED
   if( ((TCB*)tid)->state == EXITED)
     return -1;
-
-  //@TODO did we try to detach main thread?
   
   ptcb->detached = 1;
 
   // Check for joined threads and wake them up
-  // @TODO do we need to check? meh its fine
   if (ptcb->waiting_threads > 0)
   { 
     Cond_Broadcast(& ptcb->thread_join);    // Wake up threads.
@@ -141,14 +139,11 @@ void sys_ThreadExit(int exitval)
   PCB* pcb = CURPROC;
   PTCB* ptcb = CURPTHREAD;
 
-  //@TODO what if we detach main thread?
   /* --- If main_thread --- */
   if(CURTHREAD == pcb->main_thread)
   { 
     // Wait for all threads to finish their task.
     while(!is_rlist_empty(&pcb->ptcb_list))
-    // for(int i=0; i< pcb->thread_count; i++)
-    //@TODO do we need the thread counter now?
     { 
       // Pick first thread from list.
       PTCB* ptcb_i = pcb->ptcb_list.next->ptcb;
@@ -180,7 +175,8 @@ void sys_ThreadExit(int exitval)
     sys_ThreadDetach((Tid_t) CURTHREAD);
 
     // ????? if we kill the thread should we unlock the scheduller first?
-    kernel_unlock();
+    // @NOTE kernel_sleep increasses kernel semaphore maybe we don't need this but who knows
+    // kernel_unlock();
     // goodbye cruel world
     kernel_sleep(EXITED, SCHED_USER);
   }
