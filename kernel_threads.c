@@ -25,8 +25,10 @@ Tid_t sys_CreateThread(Task task, int argl, void* args)
     ptcb->thread = spawn_thread(CURPROC, start_thread_func);
     ptcb->thread->owner_ptcb = ptcb;     // Link thread to its PTCB
     
+    Mutex_Lock(&CURPROC->thread_mx);
     rlist_push_back(& CURPROC->ptcb_list, & ptcb->pthread);     // Add PThread to parent PCB's list
     ptcb->owner_pcb->thread_count++;
+    Mutex_Unlock(&CURPROC->thread_mx);
 
     wakeup(ptcb->thread);         // If everything is done, wakeup the thread
   }
@@ -88,11 +90,13 @@ int sys_ThreadJoin(Tid_t tid, int* exitval)
 
   if (ptcb->waiting_threads == 0)
   {
+    Mutex_Lock(&CURPROC->thread_mx);
+    
     process->thread_count--;
-
     rlist_remove(& ptcb->pthread);
-
     free(ptcb);
+
+    Mutex_Unlock(&CURPROC->thread_mx);
   }
 
   return 0;
@@ -147,17 +151,12 @@ void sys_ThreadExit(int exitval)
     { 
       // Pick first thread from list.
       PTCB* ptcb_i = pcb->ptcb_list.next->ptcb;
-      // PTCB* ptcb_i = (PTCB*) rlist_pop_front(& pcb->ptcb_list);
       TCB* tcb_i = ptcb_i->thread;
       
       // Wait thread_i to finish.
       sys_ThreadJoin( (Tid_t) tcb_i, NULL);
     }
-
-    /* All other threads should be exited by now */
-
-    /* We no longer need the PTCB */
-    free(ptcb);
+    /* All threads should be exited by now */
   }
   else /* --- If NOT main_thread --- */
   { 
@@ -174,9 +173,6 @@ void sys_ThreadExit(int exitval)
     /* sets thread as detached while also waking up any joined threads.*/
     sys_ThreadDetach((Tid_t) CURTHREAD);
 
-    // ????? if we kill the thread should we unlock the scheduller first?
-    // @NOTE kernel_sleep increasses kernel semaphore maybe we don't need this but who knows
-    // kernel_unlock();
     // goodbye cruel world
     kernel_sleep(EXITED, SCHED_USER);
   }

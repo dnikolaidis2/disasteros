@@ -55,6 +55,7 @@ typedef struct process_control_block {
 
   rlnode ptcb_list;       /**< List of PTCBs */
   int thread_count;       /**< Total number of threads. */
+  Mutex thread_mx;
 
 } PCB;
 

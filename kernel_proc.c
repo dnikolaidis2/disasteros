@@ -42,6 +42,7 @@ static inline void initialize_PCB(PCB* pcb)
   rlnode_init(& pcb->exited_node, pcb);
   rlnode_init(& pcb->ptcb_list, NULL);
   pcb->child_exit = COND_INIT;
+  pcb->thread_mx = MUTEX_INIT;
 }
 
 
@@ -354,6 +355,9 @@ void sys_Exit(int exitval)
     kernel_broadcast(& curproc->parent->child_exit);
   }
 
+  /* We no longer need the PTCB */
+  free(curproc->main_thread);
+  
   /* Disconnect my main_thread */
   curproc->main_thread = NULL;
 
