@@ -54,7 +54,7 @@ typedef struct process_control_block {
   FCB* FIDT[MAX_FILEID];  /**< The fileid table of the process */
 
   rlnode ptcb_list;       /**< List of PTCBs */
-  int thread_count;       /**< Total number of threads. */
+  uint64_t thread_count;       /**< Total number of threads. */
   Mutex thread_mx;
 
 } PCB;

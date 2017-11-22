@@ -369,10 +369,109 @@ void sys_Exit(int exitval)
   kernel_sleep(EXITED, SCHED_USER);
 }
 
+/* ------------------------------ Open Info ------------------------------ */
 
+typedef struct kernel_info_wrapper
+{
+  Fid_t stream;
+  
+  procinfo * info_table;
+  int64_t index;
+} infowrapper;
+
+static int info_write(void* this, const char* buf, unsigned int size)
+{
+  return -1;
+}
+
+static int info_close(void* this)
+{
+  infowrapper* info = this;
+  free(info->info_table);
+  free(info);
+  return -1;
+}
+
+static int info_read(void* this, char *buf, unsigned int size)
+{
+  infowrapper* info = this;
+
+  if (size != sizeof(procinfo))
+  {
+    return -1;
+  }
+
+  if (info->index != -1)
+  {
+    memcpy(buf, &(info->info_table[info->index]), size);
+    info->index--;
+    return size;
+  }
+  else
+  {
+    info_close(this);
+    return -1;
+  }
+  
+}
+
+file_ops info_ops = {
+  .Open = NULL,
+  .Close = info_close,
+  .Write = info_write,
+  .Read = info_read
+};
 
 Fid_t sys_OpenInfo()
 {
-	return NOFILE;
+  Fid_t stream;
+  FCB* fcb [1];
+
+  if(!FCB_reserve(1, &stream, fcb))
+  {
+    // there are no file pointers left
+    return NOFILE;
+  }
+  
+  uint32_t cur_count = process_count;
+
+  infowrapper* info = (infowrapper*)malloc(sizeof(infowrapper));
+  memset(info, 0, sizeof(infowrapper));
+
+  procinfo* info_table = (procinfo*)malloc(sizeof(procinfo)*cur_count);
+  memset(info_table, 0, sizeof(procinfo)*cur_count);
+
+  int index = 0;
+
+  // this is a procarious loop maybe fix it
+  for (int i = 0; i < MAX_PROC; ++i)
+  {
+    if (index == cur_count || index > process_count)
+    {
+      break;
+    }
+
+    PCB proc = PT[i];
+    if (proc.pstate != FREE)
+    {
+      info_table[index].pid = i;
+      info_table[index].ppid = (!proc.parent) ? 0 : (proc.parent - PT);
+      info_table[index].alive = (proc.pstate == ALIVE);
+      info_table[index].thread_count = proc.thread_count;
+      info_table[index].main_task = proc.main_thread->main_task;
+      info_table[index].argl = proc.main_thread->argl;
+      memcpy(info_table[index].args, proc.main_thread->args, info_table[index].argl);
+      index++;
+    }
+  }
+
+  info->stream = stream;
+  info->info_table = info_table;
+  info->index = index;
+
+  (*fcb)->streamobj = info;
+  (*fcb)->streamfunc = &info_ops;
+
+	return stream;
 }
 
