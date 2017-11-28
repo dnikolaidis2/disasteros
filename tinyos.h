@@ -446,7 +446,7 @@ int Read(Fid_t fd, char *buf, unsigned int size);
    For terminals, the number of bytes copied should be equal to size.
 
   @param fd  the file ID of the stream to read from
-  @param buf pointer to a byte buffer to receive the read data
+  @param buf pointer to a byte buffer to be written 
   @param size maximum size of @c buf
   @return As its function result, the @c Write function should return the 
    number of bytes copied from @c buf, or -1 on error. 
