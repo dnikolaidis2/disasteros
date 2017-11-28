@@ -16,3 +16,6 @@ test
 *.sublime-project
 *.sublime-workspace
 \.vscode/
+
+*.floo
+*.flooignore
