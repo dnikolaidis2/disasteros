@@ -38,13 +38,13 @@ int pipe_read (void* this, char *buf, unsigned int size)
 	
 	unsigned int bytes_read = 0;
 
-	if (pipe->writer_closed)
-	{
-		return 0;
-	}
-
 	if (read_p == write_p)
 	{
+		if (pipe->writer_closed)
+		{
+			return 0;
+		}
+
 		kernel_wait(&pipe->hasData, SCHED_PIPE);
 		write_p = pipe->write_p;
 		read_p = pipe->read_p;
@@ -57,7 +57,6 @@ int pipe_read (void* this, char *buf, unsigned int size)
 		buf[i] = pipe->buffer[read_p];
 		bytes_read++;
 
-		// Increments write pointer by 1, cycling through the array;
 		read_p = (read_p + 1) %(BUFF_SIZE);
 
 		if (bytes_read == size)
@@ -69,7 +68,7 @@ int pipe_read (void* this, char *buf, unsigned int size)
 	if (bytes_read)
 	{
 		pipe->read_p = read_p;
-		Cond_Broadcast(&pipe->hasSpace);
+		Cond_Signal(&pipe->hasSpace);
 		return bytes_read;
 	}
 	else
@@ -88,15 +87,16 @@ int reader_close (void* this)
 int pipe_write (void* this, const char* buf, unsigned int size)
 {	
 	PipeCB* pipe = (PipeCB*) this;
+	
 	uint32_t write_p = pipe->write_p;
 	uint32_t read_p = pipe->read_p;
 	int bytes_writen = 0;
 
 	if (pipe->reader_closed)
-	{
+	{	
 		return -1;
 	}
-
+	
 	// We assume the Pipe's buffer is full if all but one cell is used.
 	if(read_p == ( write_p + 1 ) % BUFF_SIZE)
 	{			
@@ -107,8 +107,6 @@ int pipe_write (void* this, const char* buf, unsigned int size)
 	}
 
 	// Gets available space on Pipe's buffer.
-	//@TODO FIX
-
 	int available_space = (write_p - read_p + BUFF_SIZE) % BUFF_SIZE;
 
 	if(available_space == 0)
@@ -156,14 +154,14 @@ int writer_close (void* this)
 	return -1;
 }
 
-file_ops reader_ops = {
+static file_ops reader_ops = {
   .Open = NULL,
   .Read = pipe_read,
   .Write = NULL,
   .Close = reader_close
 };
 
-file_ops writer_ops = {
+static file_ops writer_ops = {
   .Open = NULL,
   .Read = NULL,
   .Write = pipe_write,
