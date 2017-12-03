@@ -1,44 +1,17 @@
 
 #include "tinyos.h"
+#include "kernel_pipe.h"
+#include "kernel_cc.h"
 #include "kernel_streams.h"
 #include "kernel_dev.h"
-#include "kernel_cc.h"
-
-//@TODO: Should these always be 64 bit?
-#define Kilobytes(Value) ((Value)*1024)
-#define Megabytes(Value) (Kilobytes(Value)*1024)
-// #define Gigabytes(Value) (Megabytes(Value)*1024)
-// #define Terabytes(Value) (Gigabytes(Value)*1024)
-
-// Fancy macro we totally came up with.
-#define ArrayCount(Array) (sizeof(Array)/sizeof((Array)[0]))
-
-#define BUFF_SIZE Kilobytes(16)
-
-typedef struct pipe_control_block {
-	int8_t buffer[BUFF_SIZE];
-	uint32_t write_p;
-	uint32_t read_p;
-
-	CondVar hasSpace;
-	CondVar hasData;
-
-	pipe_t* pipe;
-
-	uint32_t reader_closed;
-	uint32_t writer_closed;
-
-} PipeCB;
 
 int pipe_read (void* this, char *buf, unsigned int size)
 {
 	PipeCB* pipe = (PipeCB*) this;
-	uint32_t write_p = pipe->write_p;
-	uint32_t read_p = pipe->read_p;
 	
 	unsigned int bytes_read = 0;
 
-	if (read_p == write_p)
+	while(pipe->read_p == pipe->write_p && pipe->available_space == BUFF_SIZE)
 	{
 		if (pipe->writer_closed)
 		{
@@ -46,13 +19,11 @@ int pipe_read (void* this, char *buf, unsigned int size)
 		}
 
 		kernel_wait(&pipe->hasData, SCHED_PIPE);
-		write_p = pipe->write_p;
-		read_p = pipe->read_p;
 	}
 
-	int available_data = (BUFF_SIZE - read_p + write_p) % BUFF_SIZE;
+  uint32_t read_p = pipe->read_p;
 
-	for (int i = 0; i < available_data; ++i)
+	for (int i = 0; i < (BUFF_SIZE - pipe->available_space); ++i)
 	{
 		buf[i] = pipe->buffer[read_p];
 		bytes_read++;
@@ -68,7 +39,8 @@ int pipe_read (void* this, char *buf, unsigned int size)
 	if (bytes_read)
 	{
 		pipe->read_p = read_p;
-		Cond_Signal(&pipe->hasSpace);
+    pipe->available_space += bytes_read;
+		Cond_Broadcast(&pipe->hasSpace);
 		return bytes_read;
 	}
 	else
@@ -81,6 +53,10 @@ int reader_close (void* this)
 {
 	PipeCB* pipe = (PipeCB *) this;
 	pipe->reader_closed = 1;
+	if (pipe->reader_closed && pipe->writer_closed)
+	{
+		free(pipe);
+	}
   return -1;
 }
 
@@ -88,8 +64,6 @@ int pipe_write (void* this, const char* buf, unsigned int size)
 {	
 	PipeCB* pipe = (PipeCB*) this;
 	
-	uint32_t write_p = pipe->write_p;
-	uint32_t read_p = pipe->read_p;
 	int bytes_writen = 0;
 
 	if (pipe->reader_closed)
@@ -97,29 +71,16 @@ int pipe_write (void* this, const char* buf, unsigned int size)
 		return -1;
 	}
 	
-	// We assume the Pipe's buffer is full if all but one cell is used.
-	if(read_p == ( write_p + 1 ) % BUFF_SIZE)
+	while(pipe->read_p == pipe->write_p && !pipe->available_space)
 	{			
-		// Will sleep until buffer isn't empty.
 		kernel_wait(& pipe->hasSpace, SCHED_PIPE);
-		write_p = pipe->write_p;
-		read_p = pipe->read_p;
 	}
+
+  uint32_t write_p = pipe->write_p;
 
 	// Gets available space on Pipe's buffer.
-	int available_space = (write_p - read_p + BUFF_SIZE) % BUFF_SIZE;
 
-	if(available_space == 0)
-	{
-		available_space = BUFF_SIZE - 1;
-	}
-
-	if((available_space + write_p) % BUFF_SIZE == read_p)
-	{
-		available_space--;
-	}
-
-	for (int i = 0; i < available_space; ++i)
+	for (int i = 0; i < pipe->available_space; ++i)
 	{
 		pipe->buffer[write_p] = buf[i];
 		bytes_writen++;
@@ -137,6 +98,7 @@ int pipe_write (void* this, const char* buf, unsigned int size)
 	{
 		// Update write pointer;
 		pipe->write_p = write_p;
+    pipe->available_space -= bytes_writen;
 		// Wake up any sleeping readers.
 		Cond_Broadcast(&pipe->hasData);
 		return bytes_writen;
@@ -151,6 +113,10 @@ int writer_close (void* this)
 {
 	PipeCB* pipe = (PipeCB *) this;
 	pipe->writer_closed = 1;
+	if (pipe->reader_closed && pipe->writer_closed)
+	{
+		free(pipe);
+	}
 	return -1;
 }
 
@@ -182,6 +148,7 @@ int sys_Pipe(pipe_t* pipe)
 
 	pcb->hasSpace = COND_INIT;
 	pcb->hasData = COND_INIT;
+  pcb->available_space = BUFF_SIZE;
 	pcb->pipe = pipe;
 
 	files[0]->streamobj = pcb;
