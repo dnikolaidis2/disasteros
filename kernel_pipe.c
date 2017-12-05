@@ -53,6 +53,7 @@ int reader_close (void* this)
 {
 	PipeCB* pipe = (PipeCB *) this;
 	pipe->reader_closed = 1;
+	Cond_Broadcast(&pipe->hasSpace);
 	if (pipe->reader_closed && pipe->writer_closed)
 	{
 		free(pipe);
@@ -113,6 +114,7 @@ int writer_close (void* this)
 {
 	PipeCB* pipe = (PipeCB *) this;
 	pipe->writer_closed = 1;
+	Cond_Broadcast(&pipe->hasData);
 	if (pipe->reader_closed && pipe->writer_closed)
 	{
 		free(pipe);
@@ -134,6 +136,17 @@ static file_ops writer_ops = {
   .Close = writer_close
 };
 
+PipeCB* get_pipe()
+{
+		PipeCB * pcb = (PipeCB *)malloc(sizeof(PipeCB));
+		memset(pcb, 0, sizeof(PipeCB));
+
+		pcb->hasSpace = COND_INIT;
+		pcb->hasData = COND_INIT;
+	  pcb->available_space = BUFF_SIZE;
+	  return pcb;
+}
+
 int sys_Pipe(pipe_t* pipe)
 {
 	FCB* files [2];
@@ -143,12 +156,7 @@ int sys_Pipe(pipe_t* pipe)
 		return -1;
 	}
 
-	PipeCB * pcb = (PipeCB *)malloc(sizeof(PipeCB));
-	memset(pcb, 0, sizeof(PipeCB));
-
-	pcb->hasSpace = COND_INIT;
-	pcb->hasData = COND_INIT;
-  pcb->available_space = BUFF_SIZE;
+	PipeCB* pcb = get_pipe();
 	pcb->pipe = pipe;
 
 	files[0]->streamobj = pcb;

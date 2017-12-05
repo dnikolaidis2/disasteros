@@ -6,7 +6,7 @@
 #include "kernel_cc.h"
 
 // Constant to use with TimerDuration.
-#define MILLISEC 1000
+#define MILLISEC(value) (1000*(value))
 
 typedef enum {
 	UNBOUND,
@@ -18,7 +18,7 @@ typedef union socket
 {
 	struct  //Listener
 	{
-		CondVar reqs_cv; //@TODO Changed name from reqs to reqs_cv
+		CondVar reqs_cv;
 		rlnode req_queue;
 	};
 	struct  //peer
@@ -47,8 +47,8 @@ typedef struct socket_control_block
 
 typedef struct socket_connection_request
 {
-	Socket_t* socket;
-	CondVar conn_cv; //@TODO Changed name from conn to conn_cv
+	SCB* socket;
+	CondVar conn_cv;
 	int accepted;
 	rlnode node;
 } Conn_req;
@@ -125,27 +125,18 @@ static file_ops socket_ops = {
 
 // create pipe function for sockets
 // must be called with peer initialized
-void create_pipe(Socket_t socket)
+void create_pipe(Socket_t* socket)
 {
-	PipeCB * receive = (PipeCB *)malloc(sizeof(PipeCB));
-	memset(receive, 0, sizeof(PipeCB));
 
-	receive->hasSpace = COND_INIT;
-	receive->hasData = COND_INIT;
-  receive->available_space = BUFF_SIZE;
+	PipeCB * receive = get_pipe();
+	
+ 	PipeCB * send = get_pipe();
 
-  PipeCB * send = (PipeCB *)malloc(sizeof(PipeCB));
-	memset(send, 0, sizeof(PipeCB));
+  socket->send = send;
+	socket->receive = receive;
 
-	send->hasSpace = COND_INIT;
-	send->hasData = COND_INIT;
-  send->available_space = BUFF_SIZE;
-
-  socket.send = send;
-  socket.receive = receive;
-
-  socket.peer->send = receive;
-  socket.peer->receive = send;
+  socket->peer->send = receive;
+  socket->peer->receive = send;
 }
 
 Fid_t sys_Socket(port_t port)
@@ -154,14 +145,10 @@ Fid_t sys_Socket(port_t port)
 	Fid_t fid;
 
 	if (port < 0 || port > MAX_PORT)
-	{
 		return NOFILE;
-	}
 
 	if (!FCB_reserve(1, &fid, &fcb))
-	{
 		return NOFILE;
-	}
 
 	SCB* scb = (SCB*)malloc(sizeof(SCB));
 	memset(scb, 0, sizeof(SCB));
@@ -180,93 +167,127 @@ Fid_t sys_Socket(port_t port)
 
 int sys_Listen(Fid_t sock)
 {
-	if (sock < 0 || sock > MAX_FILEID-1)
+	if (sock >= 0 && sock <= MAX_FILEID-1)
 	{
-		return -1;
+		FCB* fcb = get_fcb(sock);
+		if (fcb)
+		{
+			if (fcb->streamfunc == &socket_ops)
+			{
+				SCB* scb = (SCB*)fcb->streamobj;
+				if (scb->port)
+				{
+					if (!PortMap[scb->port])
+					{
+						if (!scb->refcount)
+						{
+							scb->socket.reqs_cv = COND_INIT;
+							rlnode_init(&scb->socket.req_queue, NULL);
+							scb->refcount++;
+							scb->type = LISTENER;
+							
+							PortMap[scb->port] = scb;
+
+							return 0;
+						}
+					}
+				}
+			}
+		}
 	}
 
-	FCB* fcb = get_fcb(sock);
-	if (!fcb)
-	{
-		return -1;
-	}
-
-	if (fcb->streamfunc != &socket_ops)
-	{
-		return -1;
-	}
-
-	SCB* scb = (SCB*)fcb->streamobj;
-	if (!scb->port)
-	{
-		return -1;
-	}
-
-	if (PortMap[scb->port])
-	{
-		return -1;
-	}
-
-	if (scb->refcount)
-	{
-		return -1;
-	}
-
-	scb->socket.reqs_cv = COND_INIT;
-	rlnode_init(&scb->socket.req_queue, NULL);
-	scb->refcount++;
-	
-	PortMap[scb->port] = scb;
-
-	return 0;
+	return -1;	
 }
 
 
 Fid_t sys_Accept(Fid_t lsock)
 {	
+
+	/*
+	Initializations and required checks.	
+	*/
 	
+	if (lsock < 0 || lsock > MAX_FILEID-1)
+		return NOFILE;
 
 	FCB* fcb = get_fcb(lsock);
+	if (!fcb)
+		return NOFILE;
+	
+	if (fcb->streamfunc != &socket_ops)
+		return NOFILE;
+
 	SCB* l_scb = (SCB*)fcb->streamobj;
 
-	while(1)
+	if (l_scb->type != LISTENER || !PortMap[l_scb->port])
+		return NOFILE;
+
+	rlnode* req_queue = & l_scb->socket.req_queue;
+
+	/*
+	Check if there is a connection request already, otherwise wait.
+	*/
+	if(is_rlist_empty(req_queue))
 	{
+		kernel_wait(& l_scb->socket.reqs_cv,SCHED_PIPE);
+	}	
 
-		// 0.9 do checks
+	/* 
+	Creating the peer sockets and their pipes and connecting them.
+	*/
 
-		rlnode* req_queue = & l_scb->socket.req_queue
+	Conn_req* conn_struct = rlist_pop_front(req_queue)->conn_req;
 
-		if(is_rlist_empty(req_queue) != 0)
-		{
-			rlnode_pop_front(req_queue);
+	SCB* client_peer = conn_struct->socket;
+	client_peer->refcount = 1;
 
+	// 2. Create server socket.
+	Fid_t server_fid = sys_Socket(l_scb->port);
 
+	if (server_fid == NOFILE)
+		return NOFILE;
 
-		}
-		// 1. Wait for request
+	fcb = get_fcb(server_fid);
+	SCB* server_peer = (SCB*)fcb->streamobj;
 
-		// If no requests, sleep.
+	server_peer->refcount = 1;
 
-		// 2. Make 1 socket.
-		// 3. Change the 2 sockets type to Peers.
-		// 4. Create Pipes.
-		// 5. Wake up client socket (from CondVar inside Conn_req struct).
-		// 6. Return Server's peer.
-		// 7. Profit!
+	// 3. Change the 2 sockets type to Peers.
+	server_peer->type = PEER;
+	client_peer->type = PEER;
 
-	}
-
+	// 4. Connect peers with each other.
+	server_peer->socket.peer = &client_peer->socket;
+	client_peer->socket.peer = &server_peer->socket;
 	
-	return NOFILE;
+	// 5. Create Pipes.
+
+	create_pipe(&server_peer->socket);
+
+	// 6. Wake up client socket (from CondVar inside Conn_req struct).
+	conn_struct->accepted = 1;
+	Cond_Signal(&conn_struct->conn_cv);
+
+	// 7. Return Server's peer.
+
+	return server_fid;
 }
 
 
 int sys_Connect(Fid_t sock, port_t port, timeout_t timeout)
 {	
 
+	if (sock < 0 || sock > MAX_FILEID-1)
+		return -1;
+
+	if (port < 0 || port > MAX_PORT)
+		return -1;
+
 	// 1. Find if Listener exists in PortMap (public var)
 
 	SCB* lsocket = PortMap[port];
+	if (!lsocket)
+		return -1;
 
 	if(!(lsocket->type == LISTENER)){
 		//@TODO remove   ...or not.
@@ -276,13 +297,16 @@ int sys_Connect(Fid_t sock, port_t port, timeout_t timeout)
 	
 	// 2. Create and fill connection struct
 
+	FCB* fcb = get_fcb(sock);
+	if (!fcb)
+		return -1;
+
 	/* Connection Request Struct INIT. */
 	Conn_req* conn_struct = (Conn_req*)malloc(sizeof(Conn_req));
 
 	// fix me
-	FCB* fcb = get_fcb(sock);
 	SCB* scb = (SCB*)fcb->streamobj;
-	conn_struct->socket = &scb->socket;
+	conn_struct->socket = scb;
 	conn_struct->conn_cv = COND_INIT;
 	conn_struct->accepted = 0;
 	rlnode_init(& conn_struct->node, conn_struct);
@@ -303,78 +327,68 @@ int sys_Connect(Fid_t sock, port_t port, timeout_t timeout)
 		/* Returns 1 if signalled, 0 otherwise.*/
 		flag = kernel_timedwait(
 			/*CondVar*/ &conn_struct->conn_cv , 
-			/* cause */ SCHED_PIPE , 
-			/*TimeDur*/ 5000*MILLISEC
+			/* cause */ SCHED_USER, 
+			/*TimeDur*/ MILLISEC(timeout)*1000000
 		);
-
 		//@TODO remove
 		if(flag == 0)
 			fprintf(stderr, "%s\n", "Server didn't respond.");	
 
 	}while(flag == 0);
 
-	return 1;
+	// kernel_wait(&conn_struct->conn_cv, SCHED_USER);
+
+	return 0;
 }
 
 
 int sys_ShutDown(Fid_t sock, shutdown_mode how)
 {
-	if (sock < 0 || sock > MAX_FILEID-1)
+	if (sock >= 0 && sock <= MAX_FILEID-1)
 	{
-		return -1;
-	}
-
-	if (!how)
-	{
-		return -1;
-	}
-
-	FCB* fcb = get_fcb(sock);
-	if (!fcb)
-	{
-		// did we succed?
-		return 0;
-	}
-
-	if (fcb->streamfunc != &socket_ops)
-	{
-		return -1;
-	}
-
-	SCB* scb = (SCB*)fcb->streamobj;
-	if (scb->type != PEER)
-	{
-		return -1;
-	}
-
-	if (!scb->socket.peer)
-	{
-		return -1;
-	}
-
-	if (how == SHUTDOWN_READ || how == SHUTDOWN_BOTH)
-	{
-		if (scb->socket.receive)
+		if (how)
 		{
-			reader_close(scb->socket.receive);
-			scb->socket.receive = NULL;
-			writer_close(scb->socket.peer->send);
-			scb->socket.peer->send = NULL;
+			FCB* fcb = get_fcb(sock);
+			if (fcb)
+			{
+				if (fcb->streamfunc == &socket_ops)
+				{
+					SCB* scb = (SCB*)fcb->streamobj;
+					if (scb->type == PEER)
+					{
+						if (scb->socket.peer)
+						{
+							if (how == SHUTDOWN_READ || how == SHUTDOWN_BOTH)
+							{
+								if (scb->socket.receive)
+								{
+									reader_close(scb->socket.receive);
+									scb->socket.receive = NULL;
+									writer_close(scb->socket.peer->send);
+									scb->socket.peer->send = NULL;
+								}
+							}
+							
+							if (how == SHUTDOWN_WRITE || how == SHUTDOWN_BOTH)
+							{
+								if (scb->socket.send)
+								{
+									writer_close(scb->socket.send);
+									scb->socket.send = NULL;
+									reader_close(scb->socket.peer->receive);
+									scb->socket.peer->receive = NULL;
+								}	
+							}
+
+							return 0;
+						}
+					}
+				}
+			}
 		}
 	}
-	
-	if (how == SHUTDOWN_WRITE || how == SHUTDOWN_BOTH)
-	{
-		if (scb->socket.send)
-		{
-			writer_close(scb->socket.send);
-			scb->socket.send = NULL;
-			reader_close(scb->socket.peer->receive);
-			scb->socket.peer->receive = NULL;
-		}	
-	}
 
-	return 0;
+	return -1;
 }
 
 

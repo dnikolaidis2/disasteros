@@ -291,7 +291,7 @@ typedef struct device_control_block DCB;			/**< @brief Forward declaration */
 typedef struct file_control_block FCB;				/**< @brief Forward declaration */
 typedef struct p_thread_control_block PTCB;			/**< @brief Forward declaration */
 typedef struct unbound Unbound;
-typedef struct socket_connection_block ConnBlock;
+typedef struct socket_connection_request Conn_req;
 
 /** @brief A convenience typedef */
 typedef struct resource_list_node * rlnode_ptr;
@@ -319,7 +319,7 @@ typedef struct resource_list_node {
     FCB* fcb;
     PTCB* ptcb;
     Unbound* unbound;
-    ConnBlock* connblock;
+    Conn_req* conn_req;
     void* obj;
     rlnode_ptr node;
     intptr_t num;

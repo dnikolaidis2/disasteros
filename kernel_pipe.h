@@ -38,4 +38,6 @@ int reader_close (void* this);
 
 int writer_close (void* this);
 
+PipeCB* get_pipe();
+
 #endif
