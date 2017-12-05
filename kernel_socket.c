@@ -30,29 +30,6 @@ typedef union socket
 }Socket_t;
 // damn naming conflicts
 
-/*
-typedef struct socket
-{
-	Socket_type type;
-	union 
-	{
-		struct  //Listener
-		{
-			CondVar reqs_cv;
-			rlnode req_queue;
-		};
-		struct  //peer
-		{
-			struct socket* peer;
-			PipeCB* send;
-			PipeCB* receive;
-		};
-	};
-	rlnode node;
-}Socket_t;
-*/
-
-
 typedef struct socket_control_block
 {
 	int refcount;
@@ -76,53 +53,7 @@ typedef struct socket_connection_request
 	rlnode node;
 } Conn_req;
 
-// typedef struct unbound
-// {
-	// padding?
-	// rlnode node;	// but why?
-// }Unbound;
 
-// typedef struct listener
-// {
-	// CondVar reqs;
-	// rlnode req_queue;
-// }Listener;
-// 
-// typedef struct peer
-// {
-	// struct peer* peer;
-	// PipeCB send;
-	// PipeCB receive;
-// }Peer;
-
-// typedef struct socket_control_block 
-// {
-// 	int refcount;
-// 	FCB* fcb;
-// 	port_t port;
-// 	Socket_type type;
-
-// 	union
-// 	{
-		// BUT I WANTED MY STRUCTS TO BE ANONYMOUS ಥ_ಥ
-// 		Unbound unbound;
-// 		Listener listener;
-// 		Peer peer;
-// 	};
-// } SCB;
-
-// typedef struct socket_connection_block 
-// {
-// 	union 
-// 	{
-// 		Unbound* unbound;
-// 		Peer* peer;
-// 	};
-
-// 	rlnode node;
-// 	CondVar conn;
-// 	int accepted;
-// } ConnBlock;
 
 #define PORT SCB*
 
@@ -161,7 +92,7 @@ int socket_write(void* this, const char* buf, unsigned int size)
 			{
 				if (scb->socket.send)
 				{
-					return pipe_write(scb->socket.send, buf, size);
+					return pipe_write(scb->socket.send, buf, size);	 // How deep does the Rabbit hole go?
 				}
 			}
 		}
@@ -293,17 +224,39 @@ int sys_Listen(Fid_t sock)
 
 Fid_t sys_Accept(Fid_t lsock)
 {	
-	// 0.9 do checks
-	// 1. Wait for request
+	
 
-	// If no requests, sleep.
+	FCB* fcb = get_fcb(lsock);
+	SCB* l_scb = (SCB*)fcb->streamobj;
 
-	// 2. Make 1 socket.
-	// 3. Change the 2 sockets type to Peers.
-	// 4. Create Pipes.
-	// 5. Wake up client socket (from CondVar inside Conn_req struct).
-	// 6. Return Server's peer.
-	// 7. Profit!
+	while(1)
+	{
+
+		// 0.9 do checks
+
+		rlnode* req_queue = & l_scb->socket.req_queue
+
+		if(is_rlist_empty(req_queue) != 0)
+		{
+			rlnode_pop_front(req_queue);
+
+
+
+		}
+		// 1. Wait for request
+
+		// If no requests, sleep.
+
+		// 2. Make 1 socket.
+		// 3. Change the 2 sockets type to Peers.
+		// 4. Create Pipes.
+		// 5. Wake up client socket (from CondVar inside Conn_req struct).
+		// 6. Return Server's peer.
+		// 7. Profit!
+
+	}
+
+	
 	return NOFILE;
 }
 
@@ -424,3 +377,77 @@ int sys_ShutDown(Fid_t sock, shutdown_mode how)
 	return 0;
 }
 
+
+/*
+typedef struct socket
+{
+	Socket_type type;
+	union 
+	{
+		struct  //Listener
+		{
+			CondVar reqs_cv;
+			rlnode req_queue;
+		};
+		struct  //peer
+		{
+			struct socket* peer;
+			PipeCB* send;
+			PipeCB* receive;
+		};
+	};
+	rlnode node;
+}Socket_t;
+*/
+
+
+// ========================================
+
+
+// typedef struct unbound
+// {
+	// padding?
+	// rlnode node;	// but why?
+// }Unbound;
+
+// typedef struct listener
+// {
+	// CondVar reqs;
+	// rlnode req_queue;
+// }Listener;
+// 
+// typedef struct peer
+// {
+	// struct peer* peer;
+	// PipeCB send;
+	// PipeCB receive;
+// }Peer;
+
+// typedef struct socket_control_block 
+// {
+// 	int refcount;
+// 	FCB* fcb;
+// 	port_t port;
+// 	Socket_type type;
+
+// 	union
+// 	{
+		// BUT I WANTED MY STRUCTS TO BE ANONYMOUS ಥ_ಥ
+// 		Unbound unbound;
+// 		Listener listener;
+// 		Peer peer;
+// 	};
+// } SCB;
+
+// typedef struct socket_connection_block 
+// {
+// 	union 
+// 	{
+// 		Unbound* unbound;
+// 		Peer* peer;
+// 	};
+
+// 	rlnode node;
+// 	CondVar conn;
+// 	int accepted;
+// } ConnBlock;
