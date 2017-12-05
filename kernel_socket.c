@@ -415,8 +415,8 @@ int sys_ShutDown(Fid_t sock, shutdown_mode how)
 								{
 									writer_close(scb->socket.send);
 									scb->socket.send = NULL;
-									reader_close(scb->socket.peer->receive);
-									scb->socket.peer->receive = NULL;
+									// reader_close(scb->socket.peer->receive);
+									// scb->socket.peer->receive = NULL;
 								}	
 							}
 
