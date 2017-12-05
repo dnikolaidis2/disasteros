@@ -106,10 +106,17 @@ int socket_close(void* this)
 	SCB* scb = (SCB*)this;
 	if (scb->refcount <= 1)
 	{
-		if (PortMap[scb->port] == scb)
+		if (scb->type == LISTENER)
 		{
-			PortMap[scb->port] = NULL;
+			scb->refcount = 0;
+			Cond_Broadcast(&scb->socket.reqs_cv);
+			yield(SCHED_USER);
+			if (PortMap[scb->port] == scb)
+			{
+				PortMap[scb->port] = NULL;
+			}
 		}
+		
 		free(this);
 		return 0;
 	}
@@ -229,8 +236,23 @@ Fid_t sys_Accept(Fid_t lsock)
 	*/
 	if(is_rlist_empty(req_queue))
 	{
+   //  kernel_timedwait(
+			// /*CondVar*/ & l_scb->socket.reqs_cv , 
+			// /* cause */ SCHED_USER, 
+			// /*TimeDur*/ MILLISEC(2500)//*1000000
+   //  );
 		kernel_wait(& l_scb->socket.reqs_cv,SCHED_PIPE);
+		if (!l_scb->refcount)
+		{
+			return NOFILE;
+		}
 	}	
+
+	// if (is_rlist_empty(req_queue))
+	// {
+	// 	// something went wrong
+	// 	return NOFILE;
+	// }
 
 	/* 
 	Creating the peer sockets and their pipes and connecting them.
@@ -245,8 +267,11 @@ Fid_t sys_Accept(Fid_t lsock)
 	Fid_t server_fid = sys_Socket(l_scb->port);
 
 	if (server_fid == NOFILE)
-		return NOFILE;
-
+  {
+    Cond_Signal(&conn_struct->conn_cv);
+    return NOFILE;
+  }
+		
 	fcb = get_fcb(server_fid);
 	SCB* server_peer = (SCB*)fcb->streamobj;
 
@@ -278,6 +303,7 @@ int sys_Connect(Fid_t sock, port_t port, timeout_t timeout)
 {	
 
 	if (sock < 0 || sock > MAX_FILEID-1)
+		// wake any potentialy waiting threads
 		return -1;
 
 	if (port < 0 || port > MAX_PORT)
@@ -301,11 +327,15 @@ int sys_Connect(Fid_t sock, port_t port, timeout_t timeout)
 	if (!fcb)
 		return -1;
 
+	SCB* scb = (SCB*)fcb->streamobj;
+	if (scb->type != UNBOUND )
+		return -1;
+
 	/* Connection Request Struct INIT. */
 	Conn_req* conn_struct = (Conn_req*)malloc(sizeof(Conn_req));
 
 	// fix me
-	SCB* scb = (SCB*)fcb->streamobj;
+	
 	conn_struct->socket = scb;
 	conn_struct->conn_cv = COND_INIT;
 	conn_struct->accepted = 0;
@@ -321,20 +351,30 @@ int sys_Connect(Fid_t sock, port_t port, timeout_t timeout)
 
 
 	// 4. Sleep until having answer
-	int flag;
-	do
+	while(!conn_struct->accepted)
 	{
-		/* Returns 1 if signalled, 0 otherwise.*/
-		flag = kernel_timedwait(
+		int flag = kernel_timedwait(
 			/*CondVar*/ &conn_struct->conn_cv , 
 			/* cause */ SCHED_USER, 
-			/*TimeDur*/ MILLISEC(timeout)*1000000
+			/*TimeDur*/ MILLISEC(timeout)//*1000000
 		);
-		//@TODO remove
-		if(flag == 0)
-			fprintf(stderr, "%s\n", "Server didn't respond.");	
+		if(flag && !conn_struct->accepted)
+			return -1;
 
-	}while(flag == 0);
+		if (!flag)
+			return -1;
+	}
+
+	// int flag;
+	// do
+	// {
+	// 	/* Returns 1 if signalled, 0 otherwise.*/
+	// 	flag = 
+	// 	//@TODO remove
+	// 	if(flag == 0)
+	// 		fprintf(stderr, "%s\n", "Server didn't respond.");	
+
+	// }while(flag == 0);
 
 	// kernel_wait(&conn_struct->conn_cv, SCHED_USER);
 
