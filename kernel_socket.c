@@ -30,6 +30,29 @@ typedef union socket
 }Socket_t;
 // damn naming conflicts
 
+/*
+typedef struct socket
+{
+	Socket_type type;
+	union 
+	{
+		struct  //Listener
+		{
+			CondVar reqs_cv;
+			rlnode req_queue;
+		};
+		struct  //peer
+		{
+			struct socket* peer;
+			PipeCB* send;
+			PipeCB* receive;
+		};
+	};
+	rlnode node;
+}Socket_t;
+*/
+
+
 typedef struct socket_control_block
 {
 	int refcount;
@@ -37,6 +60,11 @@ typedef struct socket_control_block
 	Socket_type type;
 
 	Socket_t socket;
+	// alt
+	// Socket_t* listener;
+	// rlnode socket_list?
+	// add node to socket_t
+	// make Portmap array of SCB's
 	// FCB*
 }SCB;
 
@@ -104,10 +132,40 @@ static PORT PortMap [MAX_PORT+1] = {0};
 
 int socket_read(void* this, char *buf, unsigned int size)
 {
+	SCB* scb = (SCB*)this;
+	if (scb)
+	{	
+		if (scb->type == PEER)
+		{
+			if (scb->socket.peer)
+			{
+				if (scb->socket.receive)
+				{
+					return pipe_read(scb->socket.receive, buf, size);
+				}
+			}
+		}
+	}
+
 	return -1;
 }
 int socket_write(void* this, const char* buf, unsigned int size)
 {
+	SCB* scb = (SCB*)this;
+	if (scb)
+	{	
+		if (scb->type == PEER)
+		{
+			if (scb->socket.peer)
+			{
+				if (scb->socket.send)
+				{
+					return pipe_write(scb->socket.send, buf, size);
+				}
+			}
+		}
+	}
+
 	return -1;
 }
 int socket_close(void* this)
@@ -115,7 +173,10 @@ int socket_close(void* this)
 	SCB* scb = (SCB*)this;
 	if (scb->refcount <= 1)
 	{
-		PortMap[scb->port] = NULL;
+		if (PortMap[scb->port] == scb)
+		{
+			PortMap[scb->port] = NULL;
+		}
 		free(this);
 		return 0;
 	}
@@ -278,7 +339,61 @@ int sys_Connect(Fid_t sock, port_t port, timeout_t timeout)
 
 int sys_ShutDown(Fid_t sock, shutdown_mode how)
 {
-	// to be figured out
-	return -1;
+	if (sock < 0 || sock > MAX_FILEID-1)
+	{
+		return -1;
+	}
+
+	if (!how)
+	{
+		return -1;
+	}
+
+	FCB* fcb = get_fcb(sock);
+	if (!fcb)
+	{
+		// did we succed?
+		return 0;
+	}
+
+	if (fcb->streamfunc != &socket_ops)
+	{
+		return -1;
+	}
+
+	SCB* scb = (SCB*)fcb->streamobj;
+	if (scb->type != PEER)
+	{
+		return -1;
+	}
+
+	if (!scb->socket.peer)
+	{
+		return -1;
+	}
+
+	if (how == SHUTDOWN_READ || how == SHUTDOWN_BOTH)
+	{
+		if (scb->socket.receive)
+		{
+			reader_close(scb->socket.receive);
+			scb->socket.receive = NULL;
+			writer_close(scb->socket.peer->send);
+			scb->socket.peer->send = NULL;
+		}
+	}
+	
+	if (how == SHUTDOWN_WRITE || how == SHUTDOWN_BOTH)
+	{
+		if (scb->socket.send)
+		{
+			writer_close(scb->socket.send);
+			scb->socket.send = NULL;
+			reader_close(scb->socket.peer->receive);
+			scb->socket.peer->receive = NULL;
+		}	
+	}
+
+	return 0;
 }
 

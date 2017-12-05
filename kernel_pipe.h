@@ -30,4 +30,12 @@ typedef struct pipe_control_block {
 
 } PipeCB;
 
+int pipe_read (void* this, char *buf, unsigned int size);
+
+int pipe_write (void* this, const char* buf, unsigned int size);
+
+int reader_close (void* this);
+
+int writer_close (void* this);
+
 #endif
