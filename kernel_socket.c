@@ -149,6 +149,7 @@ int socket_read(void* this, char *buf, unsigned int size)
 
 	return -1;
 }
+
 int socket_write(void* this, const char* buf, unsigned int size)
 {
 	SCB* scb = (SCB*)this;
@@ -168,6 +169,7 @@ int socket_write(void* this, const char* buf, unsigned int size)
 
 	return -1;
 }
+
 int socket_close(void* this)
 {
 	SCB* scb = (SCB*)this;
@@ -189,6 +191,31 @@ static file_ops socket_ops = {
   .Write = socket_write,
   .Close = socket_close
 };
+
+// create pipe function for sockets
+// must be called with peer initialized
+void create_pipe(Socket_t socket)
+{
+	PipeCB * receive = (PipeCB *)malloc(sizeof(PipeCB));
+	memset(receive, 0, sizeof(PipeCB));
+
+	receive->hasSpace = COND_INIT;
+	receive->hasData = COND_INIT;
+  receive->available_space = BUFF_SIZE;
+
+  PipeCB * send = (PipeCB *)malloc(sizeof(PipeCB));
+	memset(send, 0, sizeof(PipeCB));
+
+	send->hasSpace = COND_INIT;
+	send->hasData = COND_INIT;
+  send->available_space = BUFF_SIZE;
+
+  socket.send = send;
+  socket.receive = receive;
+
+  socket.peer->send = receive;
+  socket.peer->receive = send;
+}
 
 Fid_t sys_Socket(port_t port)
 {
