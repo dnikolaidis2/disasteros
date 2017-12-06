@@ -51,13 +51,22 @@ int pipe_read (void* this, char *buf, unsigned int size)
 	
 int reader_close (void* this)
 {
-	PipeCB* pipe = (PipeCB *) this;
-	pipe->reader_closed = 1;
-	Cond_Broadcast(&pipe->hasSpace);
-	if (pipe->reader_closed && pipe->writer_closed)
+	if (this)
 	{
-		free(pipe);
+		PipeCB* pipe = (PipeCB *) this;
+		if (!pipe->reader_closed)
+		{
+			pipe->reader_closed = 1;
+			Cond_Broadcast(&pipe->hasSpace);
+		  writer_close(this);
+			// if (pipe->reader_closed && pipe->writer_closed)
+			// {
+				free(pipe);
+			// }
+		}
+		return 0;
 	}
+
   return -1;
 }
 
@@ -112,13 +121,17 @@ int pipe_write (void* this, const char* buf, unsigned int size)
 
 int writer_close (void* this)
 {
-	PipeCB* pipe = (PipeCB *) this;
-	pipe->writer_closed = 1;
-	Cond_Broadcast(&pipe->hasData);
-	if (pipe->reader_closed && pipe->writer_closed)
+	if (this)
 	{
-		free(pipe);
+		PipeCB* pipe = (PipeCB *) this;
+		if (!pipe->writer_closed)
+		{
+			pipe->writer_closed = 1;
+			Cond_Broadcast(&pipe->hasData);
+		}
+		return 0;
 	}
+
 	return -1;
 }
 
@@ -138,13 +151,13 @@ static file_ops writer_ops = {
 
 PipeCB* get_pipe()
 {
-		PipeCB * pcb = (PipeCB *)malloc(sizeof(PipeCB));
-		memset(pcb, 0, sizeof(PipeCB));
+	PipeCB * pcb = (PipeCB *)malloc(sizeof(PipeCB));
+	memset(pcb, 0, sizeof(PipeCB));
 
-		pcb->hasSpace = COND_INIT;
-		pcb->hasData = COND_INIT;
-	  pcb->available_space = BUFF_SIZE;
-	  return pcb;
+	pcb->hasSpace = COND_INIT;
+	pcb->hasData = COND_INIT;
+  pcb->available_space = BUFF_SIZE;
+  return pcb;
 }
 
 int sys_Pipe(pipe_t* pipe)

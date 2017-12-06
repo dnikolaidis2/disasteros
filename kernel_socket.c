@@ -37,6 +37,7 @@ typedef struct socket_control_block
 	Socket_type type;
 
 	Socket_t socket;
+	Fid_t fid;
 	// alt
 	// Socket_t* listener;
 	// rlnode socket_list?
@@ -73,6 +74,10 @@ int socket_read(void* this, char *buf, unsigned int size)
 				if (scb->socket.receive)
 				{
 					return pipe_read(scb->socket.receive, buf, size);
+				}
+				else
+				{
+					return 0;
 				}
 			}
 		}
@@ -115,6 +120,12 @@ int socket_close(void* this)
 			{
 				PortMap[scb->port] = NULL;
 			}
+		}
+		else if (scb->type == PEER)
+		{
+			sys_ShutDown(scb->fid, SHUTDOWN_BOTH);
+      reader_close(scb->socket.peer->receive);
+			scb->socket.peer->receive = NULL;
 		}
 		
 		free(this);
@@ -164,6 +175,7 @@ Fid_t sys_Socket(port_t port)
 	{
 		// scb->refcount++;
 		scb->port = port;
+		scb->fid = fid;
 	}
 
 	fcb->streamobj = scb;
@@ -404,7 +416,6 @@ int sys_ShutDown(Fid_t sock, shutdown_mode how)
 								{
 									reader_close(scb->socket.receive);
 									scb->socket.receive = NULL;
-									writer_close(scb->socket.peer->send);
 									scb->socket.peer->send = NULL;
 								}
 							}
@@ -415,8 +426,6 @@ int sys_ShutDown(Fid_t sock, shutdown_mode how)
 								{
 									writer_close(scb->socket.send);
 									scb->socket.send = NULL;
-									// reader_close(scb->socket.peer->receive);
-									// scb->socket.peer->receive = NULL;
 								}	
 							}
 
