@@ -164,6 +164,16 @@ void sys_ThreadExit(int exitval)
     /* Save exitval in PTCB. */
     ptcb->exitval = exitval;
 
+    if (ptcb->detached)
+    {  
+      pcb->thread_count--;
+      rlist_remove(& ptcb->pthread);
+      free(ptcb);
+
+      // goodbye cruel world
+      kernel_sleep(EXITED, SCHED_USER);
+    }
+
     // If noone is waiting or us lets wait for them
     if (ptcb->waiting_threads == 0)
     {
