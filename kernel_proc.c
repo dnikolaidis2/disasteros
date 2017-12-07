@@ -371,22 +371,10 @@ void sys_Exit(int exitval)
 
 /* ------------------------------ Open Info ------------------------------ */
 
-typedef struct kernel_info_wrapper
-{
-  Fid_t stream;
-  
-  procinfo * info_table;
-  int64_t index;
-} infowrapper;
-
-static int info_write(void* this, const char* buf, unsigned int size)
-{
-  return -1;
-}
-
 static int info_close(void* this)
 {
-  infowrapper* info = this;
+  InfoCB* info = this;
+  // just free all memory
   free(info->info_table);
   free(info);
   return -1;
@@ -394,12 +382,11 @@ static int info_close(void* this)
 
 static int info_read(void* this, char *buf, unsigned int size)
 {
-  infowrapper* info = this;
+  InfoCB* info = this;
 
+  // not sure of this one. Maybe >= ? as long as we can fit the struct ...
   if (size != sizeof(procinfo))
-  {
     return -1;
-  }
 
   if (info->index != -1)
   {
@@ -409,8 +396,8 @@ static int info_read(void* this, char *buf, unsigned int size)
   }
   else
   {
-    info_close(this);
-    return -1;
+    // EOF
+    return 0;
   }
   
 }
@@ -418,7 +405,7 @@ static int info_read(void* this, char *buf, unsigned int size)
 file_ops info_ops = {
   .Open = NULL,
   .Close = info_close,
-  .Write = info_write,
+  .Write = NULL,
   .Read = info_read
 };
 
@@ -435,17 +422,29 @@ Fid_t sys_OpenInfo()
   
   uint32_t cur_count = process_count;
 
-  infowrapper* info = (infowrapper*)malloc(sizeof(infowrapper));
-  memset(info, 0, sizeof(infowrapper));
+  InfoCB* info = (InfoCB*)malloc(sizeof(InfoCB));
+  if (!info)
+  {
+    fprintf(stderr, "FATAL: Could not allocate enough memory\n");
+    return NOFILE;
+  }
+  memset(info, 0, sizeof(InfoCB));
 
   procinfo* info_table = (procinfo*)malloc(sizeof(procinfo)*cur_count);
+  if (!info_table)
+  {
+    fprintf(stderr, "FATAL: Could not allocate enough memory\n");
+    return NOFILE;
+  }
   memset(info_table, 0, sizeof(procinfo)*cur_count);
 
   int index = 0;
 
   // this is a procarious loop maybe fix it
+  // This loop might runn for a very long time!
   for (int i = 0; i < MAX_PROC; ++i)
   {
+    // We have all PCB that we can fit or a Process exited and we should stop.
     if (index == cur_count || index > process_count)
     {
       break;
@@ -465,7 +464,6 @@ Fid_t sys_OpenInfo()
     }
   }
 
-  info->stream = stream;
   info->info_table = info_table;
   info->index = index;
 

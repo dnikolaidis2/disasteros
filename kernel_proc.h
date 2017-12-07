@@ -60,38 +60,6 @@ typedef struct process_control_block {
 } PCB;
 
 /**
-  @brief Process Thread Control Block.
- */
-typedef struct  p_thread_control_block
-{
-  PCB* owner_pcb;         /**< Owner PCB*/
-  rlnode pthread;         /**< Node for intrusive list*/
-  
-  TCB* thread;
-  int exitval;            /**< The exit value */
-
-  CondVar waiting;        /**< Condition variable to wake sleeping threads so that they can be joined*/
-  CondVar thread_join;    /**< Condition variable for @c ThreadJoin */
-  int waiting_threads;    /**< Number of threads waiting on this thread*/
-  int detached;           /**< If = 0 then thread is joinable */
-
-  Task main_task;         /**< The thread's function */
-  int argl;               /**< The thread's argument length */
-  void* args;             /**< The thread's argument string */
-
-}PTCB;
-
-
-/**
-  @brief Acquire PTCB.
-
-  This function returns a PTCB struct with its members initialized and 
-  pushes its rlnode in PCB's ptcb_list 
-*/
-PTCB* Create_PTCB(PCB* pcb);
-
-
-/**
   @brief Initialize the process table.
 
   This function is called during kernel initialization, to initialize
@@ -122,6 +90,51 @@ PCB* get_pcb(Pid_t pid);
   @returns the PID of the process, or NOPROC.
 */
 Pid_t get_pid(PCB* pcb);
+
+/**
+  @brief Process Thread Control Block.
+ */
+typedef struct  p_thread_control_block
+{
+  PCB* owner_pcb;         /**< Owner PCB*/
+  rlnode pthread;         /**< Node for intrusive list*/
+  
+  TCB* thread;
+  int exitval;            /**< The exit value */
+
+  CondVar waiting;        /**< Condition variable to wake sleeping threads so that they can be joined*/
+  CondVar thread_join;    /**< Condition variable for @c ThreadJoin */
+  int waiting_threads;    /**< Number of threads waiting on this thread*/
+  int detached;           /**< If = 0 then thread is joinable */
+
+  Task main_task;         /**< The thread's function */
+  int argl;               /**< The thread's argument length */
+  void* args;             /**< The thread's argument string */
+
+}PTCB;
+
+
+/**
+  @brief Acquire PTCB.
+
+  This function returns a PTCB struct with its members initialized and 
+  pushes its rlnode in PCB's ptcb_list 
+*/
+PTCB* Create_PTCB(PCB* pcb);
+
+/* ------------------------------ Open Info ------------------------------ */
+
+/**
+  @brief Info Control Block.
+
+  This struct has all the date needed for OpenInfo()/sysinfo
+  and acts as the streamobj for the associated stream.
+ */
+typedef struct info_control_block
+{
+  procinfo * info_table;  /**< A dynamic array with all the procinfo structs that were created during OpenInfo()*/
+  uint32_t index;         /**< The index of next element to be drawn from array*/
+} InfoCB;
 
 /** @} */
 
