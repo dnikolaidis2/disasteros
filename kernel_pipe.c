@@ -3,7 +3,6 @@
 #include "kernel_pipe.h"
 #include "kernel_cc.h"
 #include "kernel_streams.h"
-#include "kernel_dev.h"
 
 int pipe_read (void* this, char *buf, unsigned int size)
 {
@@ -11,18 +10,23 @@ int pipe_read (void* this, char *buf, unsigned int size)
 	
 	unsigned int bytes_read = 0;
 
+	// Pipe is empty.
 	while(pipe->read_p == pipe->write_p && pipe->available_space == BUFF_SIZE)
 	{
 		if (pipe->writer_closed)
 		{
+			// EOF
 			return 0;
 		}
 
+		// Wait for data.
 		kernel_wait(&pipe->hasData, SCHED_PIPE);
 	}
 
+	// Local copy for speed.
   uint32_t read_p = pipe->read_p;
 
+  // Iterate over buffer and fill buf with data.
 	for (int i = 0; i < (BUFF_SIZE - pipe->available_space); ++i)
 	{
 		buf[i] = pipe->buffer[read_p];
@@ -38,6 +42,7 @@ int pipe_read (void* this, char *buf, unsigned int size)
 
 	if (bytes_read)
 	{
+		// Update everyone and exit.
 		pipe->read_p = read_p;
     pipe->available_space += bytes_read;
 		Cond_Broadcast(&pipe->hasSpace);
@@ -57,12 +62,10 @@ int reader_close (void* this)
 		if (!pipe->reader_closed)
 		{
 			pipe->reader_closed = 1;
+			// Wake potentially sleeping threads.
 			Cond_Broadcast(&pipe->hasSpace);
-		  writer_close(this);
-			// if (pipe->reader_closed && pipe->writer_closed)
-			// {
-				free(pipe);
-			// }
+		  	writer_close(this);
+			free(pipe);
 		}
 		return 0;
 	}
@@ -76,16 +79,19 @@ int pipe_write (void* this, const char* buf, unsigned int size)
 	
 	int bytes_writen = 0;
 
+	// Closed can't write.
 	if (pipe->reader_closed)
 	{	
 		return -1;
 	}
 	
+	// Check if full and wait for space.
 	while(pipe->read_p == pipe->write_p && !pipe->available_space)
 	{			
 		kernel_wait(& pipe->hasSpace, SCHED_PIPE);
 	}
 
+	// Local copy for speed reasons.
   uint32_t write_p = pipe->write_p;
 
 	// Gets available space on Pipe's buffer.
@@ -106,7 +112,7 @@ int pipe_write (void* this, const char* buf, unsigned int size)
 
 	if (bytes_writen > 0)
 	{
-		// Update write pointer;
+		// Update write pointer.
 		pipe->write_p = write_p;
     pipe->available_space -= bytes_writen;
 		// Wake up any sleeping readers.
@@ -127,6 +133,7 @@ int writer_close (void* this)
 		if (!pipe->writer_closed)
 		{
 			pipe->writer_closed = 1;
+			// Wake any potentially sleeping threads.
 			Cond_Broadcast(&pipe->hasData);
 		}
 		return 0;
@@ -135,6 +142,7 @@ int writer_close (void* this)
 	return -1;
 }
 
+// For all our reader fcb needs.
 static file_ops reader_ops = {
   .Open = NULL,
   .Read = pipe_read,
@@ -142,6 +150,7 @@ static file_ops reader_ops = {
   .Close = reader_close
 };
 
+// For all our writer fcb needs.
 static file_ops writer_ops = {
   .Open = NULL,
   .Read = NULL,
@@ -149,9 +158,15 @@ static file_ops writer_ops = {
   .Close = writer_close
 };
 
+// Allocate and initialize a PipeCB.
 PipeCB* get_pipe()
 {
 	PipeCB * pcb = (PipeCB *)malloc(sizeof(PipeCB));
+	if (!pcb)
+	{
+		fprintf(stderr, "Could not allocate enough memory\n");
+		return NULL;
+	}
 	memset(pcb, 0, sizeof(PipeCB));
 
 	pcb->hasSpace = COND_INIT;
@@ -165,9 +180,7 @@ int sys_Pipe(pipe_t* pipe)
 	FCB* files [2];
 
 	if(!FCB_reserve(2, (Fid_t*)pipe, files))
-	{
 		return -1;
-	}
 
 	PipeCB* pcb = get_pipe();
 	pcb->pipe = pipe;

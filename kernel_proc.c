@@ -108,8 +108,8 @@ void release_PCB(PCB* pcb)
  */
 
 /*
-	This function is provided as an argument to spawn,
-	to execute the main thread of a process.
+  This function is provided as an argument to spawn,
+  to execute the main thread of a process.
 */
 void start_main_thread()
 {
@@ -126,7 +126,7 @@ void start_main_thread()
 
 
 /*
-	System call to create a new process.
+  System call to create a new process.
  */
 Pid_t sys_Exec(Task call, int argl, void* args)
 {
@@ -371,15 +371,21 @@ void sys_Exit(int exitval)
 
 /* ------------------------------ Open Info ------------------------------ */
 
+/*
+  file_ops Close();
+*/
 static int info_close(void* this)
 {
   InfoCB* info = this;
   // just free all memory
   free(info->info_table);
   free(info);
-  return -1;
+  return 0;
 }
 
+/*
+  file_ops Read();
+*/
 static int info_read(void* this, char *buf, unsigned int size)
 {
   InfoCB* info = this;
@@ -402,7 +408,7 @@ static int info_read(void* this, char *buf, unsigned int size)
   
 }
 
-file_ops info_ops = {
+static file_ops info_ops = {
   .Open = NULL,
   .Close = info_close,
   .Write = NULL,
@@ -440,8 +446,7 @@ Fid_t sys_OpenInfo()
 
   int index = 0;
 
-  // this is a procarious loop maybe fix it
-  // This loop might runn for a very long time!
+  // This loop might run for a very long time!
   for (int i = 0; i < MAX_PROC; ++i)
   {
     // We have all PCB that we can fit or a Process exited and we should stop.
@@ -470,6 +475,6 @@ Fid_t sys_OpenInfo()
   (*fcb)->streamobj = info;
   (*fcb)->streamfunc = &info_ops;
 
-	return stream;
+  return stream;
 }
 
